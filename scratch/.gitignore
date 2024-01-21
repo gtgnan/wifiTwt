@@ -1,0 +1,39 @@
+# Ignore everything on scratch by default, except the provided examples
+/*
+!.gitignore
+!subdir/
+!scratch-simulator.cc
+<<<<<<< HEAD
+<<<<<<< HEAD
+!CMakeLists.txt
+=======
+!labSetupPSM.cc
+<<<<<<< HEAD
+>>>>>>> 8a4b811ff (Added labSetupPSM.cc and updated gitignore)
+=======
+!PSM_MU.cc
+<<<<<<< HEAD
+>>>>>>> 42bddfea6 (SU bug resolved. MU bug remains.)
+=======
+!CBP_eval_noPSM.cc
+>>>>>>> 1f701e162 (edited for Ubuntu)
+=======
+!labSetupPSM.cc
+!PSM_MU.cc
+!PSM_MU_UDP.cc
+!CBP_eval_noPSM.cc
+<<<<<<< HEAD
+<<<<<<< HEAD
+!wifi6Net.cc
+!wifi6Udp.cc
+=======
+!collisionEval.cc
+>>>>>>> ee5df405b (Collision eval added)
+=======
+!collisionEval.cc
+>>>>>>> b0b511d6990249f4ca59dad4eb8272f484a4cd70
+>>>>>>> df0b74d42ec4678ca54ee4e14819417e15a149aa
+!voipComparison_TWT_contention.cc
+!videoBidirectionalTWTcc
+!twtRedesignPoissonUL.cc
+!twtRedesignVideo.cc
