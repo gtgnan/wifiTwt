@@ -2,6 +2,12 @@
 The Network Simulator, Version 3
 ================================
 
+## Updated branch
+
+This implementation of TWT for the ns-3 WiFi module is not updated. Use the implementation from the branch [wifiTwtNew](https://gitlab.com/shyam100v/ns-3-dev/-/tree/wifiTwtNew). The newer implementation avoids the use of new buffers at the STA and the AP MAC models and uses link blocking and unblocking to contain frame exchanges within TWT service periods. Changes will soon be merged into this branch.
+
+
+
 ## About the Target Wake Time (TWT) implementation for the Wi-Fi module
 
 This repository contains the implementation of the Target Wake Time (TWT) feature for the Wi-Fi module of ns-3. The implementation is based on the IEEE 802.11ax-2019 standard. The implementation is based on the ns-3-dev version 3.33 and will be ported to the later releases soon. 
