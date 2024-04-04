@@ -58,12 +58,12 @@ private:
   Address         m_peer;         //!< Peer address
   Address         m_local;        //!< Local address to bind to
   bool            m_connected;    //!< True if connected
-  double          m_frameInterval;      //!< Rate that data is generated
+  Time          m_frameInterval;      //!< Frame interval ==> Example: 0.03333 seconds for 30 FPS
   double          m_weibullScale;      //!< Size of packets in active state
   double          m_weibullShape;      //!< Size of packets in silent state
-  bool            m_hasJitter;
-  double          m_GammaShape;
-  double          m_GammaScale;
+  // bool            m_hasJitter;     //!< For future implementation
+  // double          m_GammaShape;    //!< For future implementation
+  // double          m_GammaScale;    //!< For future implementation
   uint32_t        m_RemainingFrameSize;
   uint32_t        m_RemainingPkts;
   uint32_t        m_pktSize;
@@ -76,7 +76,7 @@ private:
   uint32_t        m_seq {0};      //!< Sequence
   Ptr<Packet>     m_unsentPacket; //!< Unsent packet cached for future attempt
   bool            m_enableSeqTsSizeHeader {false}; //!< Enable or disable the use of SeqTsSizeHeader
-  Ptr<GammaRandomVariable> rand_gamma = CreateObject<GammaRandomVariable> ();
+  // Ptr<GammaRandomVariable> rand_gamma = CreateObject<GammaRandomVariable> ();
   Ptr<WeibullRandomVariable> rand_weibull = CreateObject<WeibullRandomVariable> ();
 
 

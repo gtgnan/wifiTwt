@@ -1,26 +1,27 @@
-/* -*- Mode:C++; c-file-style:"gnu"; indent-tabs-mode:nil; -*- */
-//
-// Copyright (c) 2006 Georgia Tech Research Corporation
-//
-// This program is free software; you can redistribute it and/or modify
-// it under the terms of the GNU General Public License version 2 as
-// published by the Free Software Foundation;
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
-//
-// Author: George F. Riley<riley@ece.gatech.edu>
-//
-
-// ns3 - On/Off Data Source Application class
-// George F. Riley, Georgia Tech, Spring 2007
-// Adapted from ApplicationOnOff in GTNetS.
+/*
+ * Copyright (c) 2024 Roshni Garnayak <rgarnayak3@gatech.edu>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation;
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *
+ * Author: Roshni Garnayak <rgarnayak3@gatech.edu>
+ * 
+ * This is a buffered video application traffic generator application
+ * The model is based on the evaluation methodology proposed by IEEE TGax
+ * Model details can be found at: https://mentor.ieee.org/802.11/dcn/14/11-14-0571-12-00ax-evaluation-methodology.docx
+ * For latest updates from the Task Group, visit https://www.ieee802.org/11/Reports/tgax_update.htm
+ *
+ */
 
 #include "ns3/log.h"
 #include "ns3/address.h"
@@ -55,31 +56,30 @@ VideoApplication::GetTypeId (void)
     .SetParent<Application> ()
     .SetGroupName("Applications")
     .AddConstructor<VideoApplication> ()
-    .AddAttribute ("FrameInterval", "The frame interval in seconds.",
-                  //  DoubleValue (0.04),
-                   DoubleValue (0.0167),  // 60 fps
-                   MakeDoubleAccessor (&VideoApplication::m_frameInterval),
-                   MakeDoubleChecker<double> ())
-    .AddAttribute ("WeibullScale", "The frame interval in seconds.",
+    .AddAttribute ("FrameInterval", "The frame interval.",
+                   TimeValue (Seconds (0.03333)),  // For 30 fps
+                   MakeTimeAccessor (&VideoApplication::m_frameInterval),
+                   MakeTimeChecker ())
+    .AddAttribute ("WeibullScale", "Weibull scale parameter.",
                    DoubleValue (6950),
                    MakeDoubleAccessor (&VideoApplication::m_weibullScale),
                    MakeDoubleChecker<double> ())
-    .AddAttribute ("WeibullShape", "The frame interval in seconds.",
+    .AddAttribute ("WeibullShape", "Weibull shape parameter.",
                    DoubleValue (0.8099),
                    MakeDoubleAccessor (&VideoApplication::m_weibullShape),
                    MakeDoubleChecker<double> ())
-    .AddAttribute ("HasJitter", "The frame interval in seconds.",
-                   BooleanValue (false),
-                   MakeBooleanAccessor (&VideoApplication::m_hasJitter),
-                   MakeBooleanChecker ())
-    .AddAttribute ("GammaShape", "The frame interval in seconds.",
-                   DoubleValue (0.2463),
-                   MakeDoubleAccessor (&VideoApplication::m_GammaShape),
-                   MakeDoubleChecker<double> ())
-    .AddAttribute ("GammaScale", "The frame interval in seconds.",
-                   DoubleValue (60.227),
-                   MakeDoubleAccessor (&VideoApplication::m_GammaScale),
-                   MakeDoubleChecker<double> ())
+    // .AddAttribute ("HasJitter", "Enable jitter in frame interval.",
+    //                BooleanValue (false),
+    //                MakeBooleanAccessor (&VideoApplication::m_hasJitter),
+    //                MakeBooleanChecker ())
+    // .AddAttribute ("GammaShape", "Gamma shape parameter.",
+    //                DoubleValue (0.2463),
+    //                MakeDoubleAccessor (&VideoApplication::m_GammaShape),
+    //                MakeDoubleChecker<double> ())
+    // .AddAttribute ("GammaScale", "Gamma scale parameter.",
+    //                DoubleValue (60.227),
+    //                MakeDoubleAccessor (&VideoApplication::m_GammaScale),
+    //                MakeDoubleChecker<double> ())
     .AddAttribute ("Remote", "The address of the destination",
                    AddressValue (),
                    MakeAddressAccessor (&VideoApplication::m_peer),
@@ -194,9 +194,8 @@ void VideoApplication::StartApplication () // Called at time specified by Start
         MakeCallback (&VideoApplication::ConnectionSucceeded, this),
         MakeCallback (&VideoApplication::ConnectionFailed, this));
     }
-//   m_cbrRateFailSafe = m_cbrRate;
 
-  // Insure no pending event
+  // Ensure no pending event
   CancelEvents ();
   // If we are not yet connected, there is nothing to do here
   // The ConnectionComplete upcall will start timers at that time
@@ -205,8 +204,8 @@ void VideoApplication::StartApplication () // Called at time specified by Start
   rand_weibull->SetAttribute ("Scale", DoubleValue(m_weibullScale));
   NS_LOG_INFO ("Weibull scale: " << m_weibullScale);
   rand_weibull->SetAttribute ("Shape", DoubleValue(m_weibullShape));
-  rand_gamma->SetAttribute ("Alpha", DoubleValue(m_GammaShape));
-  rand_gamma->SetAttribute ("Beta", DoubleValue(m_GammaScale));
+  // rand_gamma->SetAttribute ("Alpha", DoubleValue(m_GammaShape));
+  // rand_gamma->SetAttribute ("Beta", DoubleValue(m_GammaScale));
 
   ScheduleFrameGeneration ();
 }
@@ -216,7 +215,7 @@ void VideoApplication::StopApplication () // Called at time specified by Stop
   // NS_LOG_FUNCTION (this);
   CancelEvents ();
   
-  if(m_socket != 0)
+  if (m_socket != nullptr)
     {
       m_socket->Close ();
     }
@@ -246,15 +245,16 @@ void VideoApplication::ScheduleNextTx ()
 {
   // NS_LOG_FUNCTION (this);
 
-  double latency = 0;
-  if (m_hasJitter) {
-    while (true) {
-      latency = rand_gamma->GetValue();
-      if (latency < m_frameInterval) break;
-    } 
-  }
-  Time nextTime = Seconds(latency/1000);
-  // NS_LOG_INFO ("Next packet scheduled after " << nextTime << " seconds.");
+  // double latency = 0;   // For future latency implementation
+  // if (m_hasJitter) {
+  //   while (true) {
+  //     latency = rand_gamma->GetValue();
+  //     if (latency < m_frameInterval) break;
+  //   } 
+  // }
+  // Time nextTime = Seconds(latency/1000);
+  Time nextTime = Seconds(0);
+  NS_LOG_INFO ("Next packet scheduled after " << nextTime << " seconds.");
   m_sendEvent = Simulator::Schedule (nextTime, &VideoApplication::SendPacket, this);
 }
 
@@ -272,7 +272,8 @@ void VideoApplication::ScheduleFrameGeneration()
   m_totFrames++;
 
   ScheduleNextTx();
-  // m_frameEvent = Simulator::Schedule (Seconds(m_frameInterval), &VideoApplication::ScheduleFrameGeneration, this);
+  NS_LOG_INFO ("Next frame scheduled after " << m_frameInterval.As(Time::MS));
+  m_frameEvent = Simulator::Schedule (m_frameInterval, &VideoApplication::ScheduleFrameGeneration, this);
 }
 
 void VideoApplication::SendPacket ()
@@ -287,7 +288,7 @@ void VideoApplication::SendPacket ()
   }
   else {
     m_pktSize = m_RemainingFrameSize;
-    m_frameEvent = Simulator::Schedule (Seconds(m_frameInterval), &VideoApplication::ScheduleFrameGeneration, this);
+    // m_frameEvent = Simulator::Schedule (Seconds(m_frameInterval), &VideoApplication::ScheduleFrameGeneration, this);
   }
 
   Ptr<Packet> packet;

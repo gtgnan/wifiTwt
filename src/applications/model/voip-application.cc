@@ -1,26 +1,26 @@
-/* -*- Mode:C++; c-file-style:"gnu"; indent-tabs-mode:nil; -*- */
-//
-// Copyright (c) 2006 Georgia Tech Research Corporation
-//
-// This program is free software; you can redistribute it and/or modify
-// it under the terms of the GNU General Public License version 2 as
-// published by the Free Software Foundation;
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
-//
-// Author: George F. Riley<riley@ece.gatech.edu>
-//
-
-// ns3 - On/Off Data Source Application class
-// George F. Riley, Georgia Tech, Spring 2007
-// Adapted from ApplicationOnOff in GTNetS.
+/*
+ * Copyright (c) 2024 Roshni Garnayak <rgarnayak3@gatech.edu>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation;
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *
+ * Author: Roshni Garnayak <rgarnayak3@gatech.edu>
+ *
+ * This is a Voice over IP (VoIP) traffic generator application
+ * The model is based on the evaluation methodology proposed by IEEE TGax
+ * Model details can be found at: https://mentor.ieee.org/802.11/dcn/14/11-14-0571-12-00ax-evaluation-methodology.docx
+ * For latest updates from the Task Group, visit https://www.ieee802.org/11/Reports/tgax_update.htm
+ */
 
 #include "ns3/log.h"
 #include "ns3/address.h"
@@ -55,6 +55,14 @@ VoiPApplication::GetTypeId (void)
     .SetParent<Application> ()
     .SetGroupName("Applications")
     .AddConstructor<VoiPApplication> ()
+    .AddAttribute ("ActivePktSize", "Size of packets in bytes while in Active State.",
+                   UintegerValue (33),
+                   MakeUintegerAccessor (&VoiPApplication::m_activePktSize),
+                   MakeUintegerChecker<uint32_t>())
+    .AddAttribute ("SilentPktSize", "Size of packets in bytes while in Silent State.",
+                   UintegerValue (7),
+                   MakeUintegerAccessor (&VoiPApplication::m_silentPktSize),
+                   MakeUintegerChecker<uint32_t>())
     .AddAttribute ("ExponentialMean", "The exponential mean for active/silent state duration.",
                    DoubleValue (1.25),
                    MakeDoubleAccessor (&VoiPApplication::m_expMean),
@@ -63,6 +71,14 @@ VoiPApplication::GetTypeId (void)
                    DoubleValue (0.984),
                    MakeDoubleAccessor (&VoiPApplication::m_ssprob),
                    MakeDoubleChecker<double> ())
+    .AddAttribute ("ActiveFrameInterval", "Frame interval in active state.",
+                   TimeValue (MilliSeconds (20)),
+                   MakeTimeAccessor (&VoiPApplication::m_activeFrameInterval),
+                   MakeTimeChecker())
+    .AddAttribute ("SilentFrameInterval", "Frame interval in silent state.",
+                   TimeValue (MilliSeconds (160)),
+                   MakeTimeAccessor (&VoiPApplication::m_silentFrameInterval),
+                   MakeTimeChecker())
     .AddAttribute ("Remote", "The address of the destination",
                    AddressValue (),
                    MakeAddressAccessor (&VoiPApplication::m_peer),
@@ -100,8 +116,10 @@ VoiPApplication::GetTypeId (void)
 VoiPApplication::VoiPApplication ()
   : m_socket (0),
     m_connected (false),
-    m_ActivePktSize (33),
-    m_SilentPktSize (7),
+    m_activeFrameInterval (MilliSeconds (20)),
+    m_silentFrameInterval (MilliSeconds (160)),
+    m_activePktSize (33),
+    m_silentPktSize (7),
     m_totBytes (0),
     m_unsentPacket (0)
 {
@@ -184,14 +202,9 @@ void VoiPApplication::StartApplication () // Called at time specified by Start
         MakeCallback (&VoiPApplication::ConnectionSucceeded, this),
         MakeCallback (&VoiPApplication::ConnectionFailed, this));
     }
-//   m_cbrRateFailSafe = m_cbrRate;
 
   // Insure no pending event
   CancelEvents ();
-  // If we are not yet connected, there is nothing to do here
-  // The ConnectionComplete upcall will start timers at that time
-  //if (!m_connected) return;
-  // GenerateNextState ();
   StateStart ();
 }
 
@@ -200,7 +213,7 @@ void VoiPApplication::StopApplication () // Called at time specified by Stop
   NS_LOG_FUNCTION (this);
 
   CancelEvents ();
-  if(m_socket != 0)
+  if (m_socket != nullptr)
     {
       m_socket->Close ();
     }
@@ -229,28 +242,29 @@ void VoiPApplication::CancelEvents ()
 void VoiPApplication::ScheduleNextTx ()
 {
   NS_LOG_FUNCTION (this);
-  Time nextTime = Seconds(FRAME_INTERVAL[m_currState-1]);
-  NS_LOG_INFO ("Next packet scheduled after " << nextTime << " seconds.");
+  Time nextTime;
+  if (m_currState == ACTIVE_STATE) {
+    nextTime = m_activeFrameInterval;
+  }
+  else {
+    nextTime = m_silentFrameInterval;
+  }
+  NS_LOG_INFO ("Next packet scheduled after " << nextTime << " seconds. Current state = " << m_currState);
   m_sendEvent = Simulator::Schedule (nextTime, &VoiPApplication::SendPacket, this);
 }
 
 void VoiPApplication::GenerateNextState()
 {
-    // double transitionMatrix[2][2] = {{0.984, 0.016},{0.016,0.984}};
     uint32_t r = randU->GetValue() * 1000;
     NS_LOG_INFO ("Random number generated: " << r);
-    // if (r < transitionMatrix[m_currState-1][0]*1000) {
-    //     m_nextState = ACTIVE_STATE;
-    // }
-    // else {
-    //     m_nextState = SILENT_STATE;
-    // }
-    if (r < m_ssprob*1000) {
+    if (r < m_ssprob*1000) 
+    {
       NS_LOG_INFO ("r = " << r << " < " << m_ssprob*1000 << " = ssprob*1000; State is unchanged");
 
-        m_nextState = m_currState;
+      m_nextState = m_currState;
     }
-    else {
+    else 
+    {
       NS_LOG_INFO ("r = " << r << " > " << m_ssprob*1000 << " = ssprob*1000; State is changed");
         if (m_currState == ACTIVE_STATE)
         {
@@ -266,24 +280,29 @@ void VoiPApplication::GenerateNextState()
 }
 
 void VoiPApplication::StateStart()
-{  // Schedules the event to start sending data (switch to the "On" state)
+{  
+  // Schedules the event to start sending data (switch to the "On" state)
   NS_LOG_FUNCTION (this);
   
   m_currState = m_nextState;
   GenerateNextState();
 
   double stateDuration = m_expMean * -log(randU->GetValue());
-//   NS_LOG_LOGIC ("start at " << offInterval.As (Time::S));
   m_stateStartEvent = Simulator::Schedule (Seconds(stateDuration), &VoiPApplication::StateStart, this);
-  NS_LOG_INFO ("State duration " << stateDuration);
-
-  m_numTotalPkts = floor(stateDuration/FRAME_INTERVAL[m_currState-1]);
+  NS_LOG_INFO ("m_expMean = " << m_expMean << "; State duration " << stateDuration);
+  Time currentFrameInterval;
+  if (m_currState == ACTIVE_STATE) {
+    currentFrameInterval = m_activeFrameInterval;
+  }
+  else {
+    currentFrameInterval = m_silentFrameInterval;
+  }
+  m_numTotalPkts = floor(stateDuration/currentFrameInterval.GetSeconds());
   m_numRemainingPkts = m_numTotalPkts;
   NS_LOG_INFO ("Total number of packets to be transmitted in this state: " << m_numTotalPkts);
   if (m_numTotalPkts > 0) {
     m_sendEvent = Simulator::Schedule (Seconds(0.0), &VoiPApplication::SendPacket, this);
   }
-//   SendPacket();
 }
 
 void VoiPApplication::SendPacket ()
@@ -293,11 +312,11 @@ void VoiPApplication::SendPacket ()
   NS_ASSERT (m_sendEvent.IsExpired ());
 
   if (m_currState == ACTIVE_STATE) {
-    m_pktSize = m_ActivePktSize;
+    m_pktSize = m_activePktSize;
     NS_LOG_INFO ("Active packet size " << m_pktSize);
   }
   else {
-    m_pktSize = m_SilentPktSize;
+    m_pktSize = m_silentPktSize;
     NS_LOG_INFO ("Silent packet size " << m_pktSize);
   }
 

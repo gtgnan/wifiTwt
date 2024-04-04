@@ -1,23 +1,43 @@
-set(name li-ion-energy-source)
-set(source_files ${name}.cc)
-set(header_files)
-set(libraries_to_link ${libcore} ${libenergy})
 build_lib_example(
-  "${name}" "${source_files}" "${header_files}" "${libraries_to_link}"
+  NAME generic-battery-discharge-example
+  SOURCE_FILES generic-battery-discharge-example.cc
+  LIBRARIES_TO_LINK ${libcore}
+                    ${libenergy}
 )
 
-set(name rv-battery-model-test)
-set(source_files ${name}.cc)
-set(header_files)
-set(libraries_to_link ${libcore} ${libenergy} ${libwifi})
 build_lib_example(
-  "${name}" "${source_files}" "${header_files}" "${libraries_to_link}"
+  NAME generic-battery-wifiradio-example
+  SOURCE_FILES generic-battery-wifiradio-example.cc
+  LIBRARIES_TO_LINK
+    ${libcore}
+    ${libconfig-store}
+    ${libenergy}
+    ${libinternet}
+    ${libmobility}
+    ${libwifi}
 )
 
-set(name basic-energy-model-test)
-set(source_files ${name}.cc)
-set(header_files)
-set(libraries_to_link ${libcore} ${libenergy} ${libwifi})
 build_lib_example(
-  "${name}" "${source_files}" "${header_files}" "${libraries_to_link}"
+  NAME li-ion-energy-source-example
+  SOURCE_FILES li-ion-energy-source-example.cc
+  LIBRARIES_TO_LINK ${libcore}
+                    ${libenergy}
+)
+
+build_lib_example(
+  NAME rv-battery-model-test
+  SOURCE_FILES rv-battery-model-test.cc
+  LIBRARIES_TO_LINK
+    ${libcore}
+    ${libenergy}
+    ${libwifi}
+)
+
+build_lib_example(
+  NAME basic-energy-model-test
+  SOURCE_FILES basic-energy-model-test.cc
+  LIBRARIES_TO_LINK
+    ${libcore}
+    ${libenergy}
+    ${libwifi}
 )

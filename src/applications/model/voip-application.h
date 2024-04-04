@@ -5,14 +5,12 @@
 #include "ns3/application.h"
 #include "ns3/event-id.h"
 #include "ns3/ptr.h"
-// #include "ns3/data-rate.h"
 #include "ns3/random-variable-stream.h"
 #include "ns3/traced-callback.h"
 #include "ns3/seq-ts-size-header.h"
 
 const uint32_t ACTIVE_STATE = 1;
 const uint32_t SILENT_STATE = 2;
-const double FRAME_INTERVAL[2] = {0.02, 0.16};
 
 namespace ns3 {
 
@@ -66,8 +64,10 @@ private:
   double          m_ssprob;
   uint32_t        m_currState;
   uint32_t        m_nextState;
-  uint32_t        m_ActivePktSize;      //!< Size of packets in active state
-  uint32_t        m_SilentPktSize;      //!< Size of packets in silent state
+  Time            m_activeFrameInterval;     //!< Frame interval in active state
+  Time            m_silentFrameInterval;     //!< Frame interval in silent state
+  uint32_t        m_activePktSize;      //!< Size of packets in active state
+  uint32_t        m_silentPktSize;      //!< Size of packets in silent state
   uint32_t        m_pktSize;
   uint32_t        m_numTotalPkts;
   uint32_t        m_numRemainingPkts;

@@ -1,4 +1,3 @@
-/* -*- Mode:C++; c-file-style:"gnu"; indent-tabs-mode:nil; -*- */
 /*
  * Copyright (c) 2015, Lawrence Livermore National Laboratory
  *
@@ -18,21 +17,19 @@
  * Author: Peter D. Barnes, Jr. <pdbarnes@llnl.gov>
  */
 
-#include "ns3/mesh-stack-installer.h"
+#include "mesh-stack-installer.h"
 
 namespace ns3
 {
-NS_OBJECT_ENSURE_REGISTERED (MeshStack);
-  
+NS_OBJECT_ENSURE_REGISTERED(MeshStack);
+
 TypeId
-MeshStack::GetTypeId ()
+MeshStack::GetTypeId()
 {
-  static TypeId tid = TypeId ("ns3::MeshStack")
-    .SetParent<Object> ()
-    .SetGroupName ("Mesh")
-    // No AddConstructor because this is an abstract class.
-    ;
-  return tid;
+    static TypeId tid = TypeId("ns3::MeshStack").SetParent<Object>().SetGroupName("Mesh")
+        // No AddConstructor because this is an abstract class.
+        ;
+    return tid;
 }
 
 } // namespace ns3

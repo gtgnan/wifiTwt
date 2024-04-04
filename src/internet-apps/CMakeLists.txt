@@ -1,7 +1,8 @@
-set(name internet-apps)
-
-set(source_files
+build_lib(
+  LIBNAME internet-apps
+  SOURCE_FILES
     helper/dhcp-helper.cc
+    helper/ping-helper.cc
     helper/ping6-helper.cc
     helper/radvd-helper.cc
     helper/v4ping-helper.cc
@@ -9,16 +10,16 @@ set(source_files
     model/dhcp-client.cc
     model/dhcp-header.cc
     model/dhcp-server.cc
+    model/ping.cc
     model/ping6.cc
     model/radvd-interface.cc
     model/radvd-prefix.cc
     model/radvd.cc
     model/v4ping.cc
     model/v4traceroute.cc
-)
-
-set(header_files
+  HEADER_FILES
     helper/dhcp-helper.h
+    helper/ping-helper.h
     helper/ping6-helper.h
     helper/radvd-helper.h
     helper/v4ping-helper.h
@@ -26,18 +27,16 @@ set(header_files
     model/dhcp-client.h
     model/dhcp-header.h
     model/dhcp-server.h
+    model/ping.h
     model/ping6.h
     model/radvd-interface.h
     model/radvd-prefix.h
     model/radvd.h
     model/v4ping.h
     model/v4traceroute.h
-)
-
-set(libraries_to_link ${libinternet})
-
-set(test_sources test/dhcp-test.cc test/ipv6-radvd-test.cc)
-
-build_lib("${name}" "${source_files}" "${header_files}" "${libraries_to_link}"
-          "${test_sources}"
+  LIBRARIES_TO_LINK ${libinternet}
+  TEST_SOURCES
+    test/dhcp-test.cc
+    test/ipv6-radvd-test.cc
+    test/ping-test.cc
 )

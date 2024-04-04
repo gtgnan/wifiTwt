@@ -1,5 +1,3 @@
-set(name spectrum)
-
 set(source_files
     helper/adhoc-aloha-noack-ideal-phy-helper.cc
     helper/spectrum-analyzer-helper.cc
@@ -12,8 +10,10 @@ set(source_files
     model/friis-spectrum-propagation-loss.cc
     model/half-duplex-ideal-phy-signal-parameters.cc
     model/half-duplex-ideal-phy.cc
+    model/ism-spectrum-value-helper.cc
     model/matrix-based-channel-model.cc
     model/microwave-oven-spectrum-value-helper.cc
+    model/two-ray-spectrum-propagation-loss-model.cc
     model/multi-model-spectrum-channel.cc
     model/non-communicating-net-device.cc
     model/single-model-spectrum-channel.cc
@@ -27,6 +27,8 @@ set(source_files
     model/spectrum-model.cc
     model/spectrum-phy.cc
     model/spectrum-propagation-loss-model.cc
+    model/spectrum-transmit-filter.cc
+    model/phased-array-spectrum-propagation-loss-model.cc
     model/spectrum-signal-parameters.cc
     model/spectrum-value.cc
     model/three-gpp-channel-model.cc
@@ -49,8 +51,10 @@ set(header_files
     model/friis-spectrum-propagation-loss.h
     model/half-duplex-ideal-phy-signal-parameters.h
     model/half-duplex-ideal-phy.h
+    model/ism-spectrum-value-helper.h
     model/matrix-based-channel-model.h
     model/microwave-oven-spectrum-value-helper.h
+    model/two-ray-spectrum-propagation-loss-model.h
     model/multi-model-spectrum-channel.h
     model/non-communicating-net-device.h
     model/single-model-spectrum-channel.h
@@ -64,6 +68,8 @@ set(header_files
     model/spectrum-model.h
     model/spectrum-phy.h
     model/spectrum-propagation-loss-model.h
+    model/spectrum-transmit-filter.h
+    model/phased-array-spectrum-propagation-loss-model.h
     model/spectrum-signal-parameters.h
     model/spectrum-value.h
     model/three-gpp-channel-model.h
@@ -75,9 +81,14 @@ set(header_files
     test/spectrum-test.h
 )
 
-set(libraries_to_link ${libpropagation} ${libantenna})
-
-set(test_sources
+build_lib(
+  LIBNAME spectrum
+  SOURCE_FILES ${source_files}
+  HEADER_FILES ${header_files}
+  LIBRARIES_TO_LINK ${libpropagation}
+                    ${libantenna}
+  TEST_SOURCES
+    test/two-ray-splm-test-suite.cc
     test/spectrum-ideal-phy-test.cc
     test/spectrum-interference-test.cc
     test/spectrum-value-test.cc
@@ -85,8 +96,4 @@ set(test_sources
     test/three-gpp-channel-test-suite.cc
     test/tv-helper-distribution-test.cc
     test/tv-spectrum-transmitter-test.cc
-)
-
-build_lib("${name}" "${source_files}" "${header_files}" "${libraries_to_link}"
-          "${test_sources}"
 )

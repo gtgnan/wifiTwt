@@ -1,5 +1,3 @@
-set(name network)
-
 set(source_files
     helper/application-container.cc
     helper/delay-jitter-estimation.cc
@@ -70,6 +68,7 @@ set(source_files
     utils/simple-channel.cc
     utils/simple-net-device.cc
     utils/sll-header.cc
+    utils/timestamp-tag.cc
 )
 
 set(header_files
@@ -100,6 +99,7 @@ set(header_files
     model/tag-buffer.h
     model/tag.h
     model/trailer.h
+    test/header-serialization-test.h
     utils/address-utils.h
     utils/bit-deserializer.h
     utils/bit-serializer.h
@@ -137,6 +137,7 @@ set(header_files
     utils/pcap-file-wrapper.h
     utils/pcap-file.h
     utils/pcap-test.h
+    utils/queue-fwd.h
     utils/queue-item.h
     utils/queue-limits.h
     utils/queue-size.h
@@ -146,11 +147,15 @@ set(header_files
     utils/simple-channel.h
     utils/simple-net-device.h
     utils/sll-header.h
+    utils/timestamp-tag.h
 )
 
-set(libraries_to_link ${libcore} ${libstats})
-
-set(test_sources
+build_lib(
+  LIBNAME network
+  SOURCE_FILES ${source_files}
+  HEADER_FILES ${header_files}
+  LIBRARIES_TO_LINK ${libstats}
+  TEST_SOURCES
     test/bit-serializer-test.cc
     test/buffer-test.cc
     test/drop-tail-queue-test-suite.cc
@@ -164,8 +169,4 @@ set(test_sources
     test/pcap-file-test-suite.cc
     test/sequence-number-test-suite.cc
     test/test-data-rate.cc
-)
-
-build_lib("${name}" "${source_files}" "${header_files}" "${libraries_to_link}"
-          "${test_sources}"
 )

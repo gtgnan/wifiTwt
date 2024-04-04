@@ -495,7 +495,7 @@ the directory where the test lives.  For example,
 ``ns3tcp-loss-NewReno0-response-vectors.pcap`` is a file consisting of a number of TCP
 headers that are used as the expected responses of the |ns3| TCP under test.
 
-Note that Unit Tests are often preferrable to System Tests, as they are more
+Note that Unit Tests are often preferable to System Tests, as they are more
 independent from small changes in the modules that are not the goal of the test.
 
 Examples
@@ -530,7 +530,7 @@ stage, and also (optionally) examples if examples are to be checked:
 
 ::
 
-   $ ./ns3 --configure --enable-examples --enable-tests
+   $ ./ns3 configure --enable-examples --enable-tests
 
 Then, build |ns3|, and after it is built, just run ``test.py``.  ``test.py -h``
 will show a number of configuration options that modify the behavior
@@ -558,7 +558,7 @@ have to run them using the test-runner directly.
 In order to execute the test-runner, you run it like any other |ns3| executable
 -- using ``ns3``.  To get a list of available options, you can type::
 
-  $ ./ns3 --run "test-runner --help"
+  $ ./ns3 run "test-runner --help"
 
 You should see something like the following
 
@@ -625,11 +625,11 @@ To run one of the tests directly from the test-runner
 using ``ns3``, you will need to specify the test suite to run.
 So you could use the shell and do::
 
-  $ ./ns3 --run "test-runner --suite=pcap-file"
+  $ ./ns3 run "test-runner --suite=pcap-file"
 
-|ns3| logging is available when you run it this way, such as:
+|ns3| logging is available when you run it this way, such as::
 
-  $ NS_LOG="Packet" ./ns3 --run "test-runner --suite=pcap-file"
+  $ NS_LOG="Packet" ./ns3 run "test-runner --suite=pcap-file"
 
 Test output
 +++++++++++
@@ -677,7 +677,7 @@ Try,
 
 ::
 
-  $ ./ns3 --run "test-runner --suite=pcap-file --out=myfile.txt"
+  $ ./ns3 run "test-runner --suite=pcap-file --out=myfile.txt"
 
 
 Debugging test suite failures
@@ -693,7 +693,7 @@ You can access the underlying test-runner program via gdb as follows, and
 then pass the "--basedir=`pwd`" argument to run (you can also pass other
 arguments as needed, but basedir is the minimum needed)::
 
-  $ ./ns3 --command-template="gdb %s" --run "test-runner"
+  $ ./ns3 run "test-runner" --command-template="gdb %s"
   Waf: Entering directory `/home/tomh/hg/sep09/ns-3-allinone/ns-3-dev-678/build'
   Waf: Leaving directory `/home/tomh/hg/sep09/ns-3-allinone/ns-3-dev-678/build'
   'build' finished successfully (0.380s)
@@ -707,7 +707,7 @@ arguments as needed, but basedir is the minimum needed)::
   (gdb) r --suite=
   Starting program: <..>/build/utils/ns3-dev-test-runner-debug --suite=wifi-interference
   [Thread debugging using libthread_db enabled]
-  assert failed. file=../src/core/model/type-id.cc, line=138, cond="uid <= m_information.size () && uid != 0"
+  assert failed. file=../src/core/model/type-id.cc, line=138, cond="uid <= m_information.size() && uid != 0"
   ...
 
 Here is another example of how to use valgrind to debug a memory problem
@@ -715,7 +715,7 @@ such as::
 
   VALGR: TestSuite devices-mesh-dot11s-regression
 
-  $ ./ns3 --command-template="valgrind %s --suite=devices-mesh-dot11s-regression" --run test-runner
+  $ ./ns3 run test-runner --command-template="valgrind %s --suite=devices-mesh-dot11s-regression"
 
 Class TestRunner
 ****************
@@ -757,13 +757,13 @@ as a ''unit'' test with the display name, ``my-test-suite-name``.
   class MySuite : public TestSuite
   {
   public:
-    MyTestSuite ();
+    MyTestSuite();
   };
 
-  MyTestSuite::MyTestSuite ()
-    : TestSuite ("my-test-suite-name", UNIT)
+  MyTestSuite::MyTestSuite()
+    : TestSuite("my-test-suite-name", UNIT)
   {
-    AddTestCase (new MyTestCase, TestCase::QUICK);
+    AddTestCase(new MyTestCase, TestCase::QUICK);
   }
 
   static MyTestSuite myTestSuite;
@@ -794,20 +794,20 @@ override also the ``DoSetup`` method.
 
   class MyTestCase : public TestCase
   {
-    MyTestCase ();
-    virtual void DoSetup (void);
-    virtual void DoRun (void);
+    MyTestCase();
+    virtual void DoSetup();
+    virtual void DoRun();
   };
 
-  MyTestCase::MyTestCase ()
-    : TestCase ("Check some bit of functionality")
+  MyTestCase::MyTestCase()
+    : TestCase("Check some bit of functionality")
   {
   }
 
   void
-  MyTestCase::DoRun (void)
+  MyTestCase::DoRun()
   {
-    NS_TEST_ASSERT_MSG_EQ (true, true, "Some failure message");
+    NS_TEST_ASSERT_MSG_EQ(true, true, "Some failure message");
   }
 
 Utilities

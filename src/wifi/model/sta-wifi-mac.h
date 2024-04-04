@@ -1,4 +1,3 @@
-/* -*- Mode:C++; c-file-style:"gnu"; indent-tabs-mode:nil; -*- */
 /*
  * Copyright (c) 2006, 2009 INRIA
  * Copyright (c) 2009 MIRKO BANCHI
@@ -23,34 +22,76 @@
 #ifndef STA_WIFI_MAC_H
 #define STA_WIFI_MAC_H
 
-#include "regular-wifi-mac.h"
 #include "mgt-headers.h"
-#include "ns3/random-variable-stream.h"
-#include "wifi-twt-agreement.h"
+#include "wifi-mac.h"
 
-class TwoLevelAggregationTest;
+#include <set>
+#include <variant>
+
 class AmpduAggregationTest;
-class HeAggregationTest;
+class MultiLinkOperationsTestBase;
 
-namespace ns3  {
+namespace ns3
+{
 
 class SupportedRates;
 class CapabilityInformation;
+class RandomVariableStream;
+class WifiAssocManager;
+class EmlsrManager;
 
 /**
  * \ingroup wifi
  *
- * Struct to hold information regarding observed AP through
- * active/passive scanning
+ * Scan type (active or passive)
  */
-struct ApInfo
+enum class WifiScanType : uint8_t
 {
-  Mac48Address m_bssid;               ///< BSSID
-  Mac48Address m_apAddr;              ///< AP MAC address
-  double m_snr;                       ///< SNR in linear scale
-  bool m_activeProbing;               ///< Flag whether active probing is used or not
-  MgtBeaconHeader m_beacon;           ///< Beacon header
-  MgtProbeResponseHeader m_probeResp; ///< Probe Response header
+    ACTIVE = 0,
+    PASSIVE
+};
+
+/**
+ * \ingroup wifi
+ *
+ * Structure holding scan parameters
+ */
+struct WifiScanParams
+{
+    /**
+     * Struct identifying a channel to scan.
+     * A channel number equal to zero indicates to scan all the channels;
+     * an unspecified band (WIFI_PHY_BAND_UNSPECIFIED) indicates to scan
+     * all the supported PHY bands.
+     */
+    struct Channel
+    {
+        uint16_t number{0};                          ///< channel number
+        WifiPhyBand band{WIFI_PHY_BAND_UNSPECIFIED}; ///< PHY band
+    };
+
+    /// typedef for a list of channels
+    using ChannelList = std::list<Channel>;
+
+    WifiScanType type;                    ///< indicates either active or passive scanning
+    Ssid ssid;                            ///< desired SSID or wildcard SSID
+    std::vector<ChannelList> channelList; ///< list of channels to scan, for each link
+    Time probeDelay;                      ///< delay prior to transmitting a Probe Request
+    Time minChannelTime;                  ///< minimum time to spend on each channel
+    Time maxChannelTime;                  ///< maximum time to spend on each channel
+};
+
+/**
+ * \ingroup wifi
+ *
+ * Enumeration for power management modes
+ */
+enum WifiPowerManagementMode : uint8_t
+{
+    WIFI_PM_ACTIVE = 0,
+    WIFI_PM_SWITCHING_TO_PS,
+    WIFI_PM_POWERSAVE,
+    WIFI_PM_SWITCHING_TO_ACTIVE
 };
 
 /**
@@ -60,37 +101,29 @@ struct ApInfo
  * machine is as follows:
  *
    \verbatim
-   ---------       --------------                                         -----------
-   | Start |       | Associated | <-------------------------        ----> | Refused |
-   ---------       --------------                           |      /      -----------
-      |              |   /------------------------------\   |     /
-      \              v   v                              |   v    /
-       \    ----------------     ---------------     -----------------------------
-        \-> | Unassociated | --> | Wait Beacon | --> | Wait Association Response |
-            ----------------     ---------------     -----------------------------
-                  \                  ^     ^ |              ^    ^ |
-                   \                 |     | |              |    | |
-                    \                v      -               /     -
-                     \    -----------------------          /
-                      \-> | Wait Probe Response | --------/
-                          -----------------------
-                                  ^ |
-                                  | |
-                                   -
+   ┌───────────┐            ┌────────────────┐                           ┌─────────────┐
+   │   Start   │      ┌─────┤   Associated   ◄───────────────────┐    ┌──►   Refused   │
+   └─┬─────────┘      │     └────────────────┘                   │    │  └─────────────┘
+     │                │                                          │    │
+     │                │ ┌─────────────────────────────────────┐  │    │
+     │                │ │                                     │  │    │
+     │  ┌─────────────▼─▼──┐       ┌──────────────┐       ┌───┴──▼────┴───────────────────┐
+     └──►   Unassociated   ├───────►   Scanning   ├───────►   Wait AssociationiResponse   │
+        └──────────────────┘       └──────┬──▲────┘       └───────────────┬──▲────────────┘
+                                          │  │                            │  │
+                                          │  │                            │  │
+                                          └──┘                            └──┘
    \endverbatim
  *
  * Notes:
  * 1. The state 'Start' is not included in #MacState and only used
  *    for illustration purpose.
  * 2. The Unassociated state is a transient state before STA starts the
- *    scanning procedure which moves it into either Wait Beacon or Wait
- *    Probe Response, based on whether passive or active scanning is
- *    selected.
- * 3. In Wait Beacon and Wait Probe Response, STA is gathering beacon or
- *    probe response packets from APs, resulted in a list of candidate AP.
- *    After the respective timeout, it then tries to associate to the best
- *    AP (i.e., best SNR). STA will switch between the two states and
- *    restart the scanning procedure if SetActiveProbing() called.
+ *    scanning procedure which moves it into the Scanning state.
+ * 3. In Scanning, STA is gathering beacon or probe response frames from APs,
+ *    resulted in a list of candidate AP. After the timeout, it then tries to
+ *    associate to the best AP, which is indicated by the Association Manager.
+ *    STA will restart the scanning procedure if SetActiveProbing() called.
  * 4. In the case when AP responded to STA's association request with a
  *    refusal, STA will try to associate to the next best AP until the list
  *    of candidate AP is exhausted which sends STA to Refused state.
@@ -105,507 +138,531 @@ struct ApInfo
  * 7. The transition from Associated to Unassociated occurs if the number
  *    of missed beacons exceeds the threshold.
  */
-class StaWifiMac : public RegularWifiMac
+class StaWifiMac : public WifiMac
 {
-public:
-  /// Allow test cases to access private members
-  friend class ::TwoLevelAggregationTest;
-  /// Allow test cases to access private members
-  friend class ::AmpduAggregationTest;
-  /// Allow test cases to access private members
-  friend class ::HeAggregationTest;
-  /**
-   * \brief Get the type ID.
-   * \return the object TypeId
-   */
-  static TypeId GetTypeId (void);
+  public:
+    /// Allow test cases to access private members
+    friend class ::AmpduAggregationTest;
+    /// Allow test cases to access private members
+    friend class ::MultiLinkOperationsTestBase;
 
-  StaWifiMac ();
-  virtual ~StaWifiMac ();
+    /// type of the management frames used to get info about APs
+    using MgtFrameType =
+        std::variant<MgtBeaconHeader, MgtProbeResponseHeader, MgtAssocResponseHeader>;
 
-  /**
-   * \param packet the packet to send.
-   * \param to the address to which the packet should be sent.
-   *
-   * The packet should be enqueued in a TX queue, and should be
-   * dequeued as soon as the channel access function determines that
-   * access is granted to this MAC.
-   */
-  void Enqueue (Ptr<Packet> packet, Mac48Address to) override;
-
-  /**
-   * \param phy the physical layer attached to this MAC.
-   */
-  void SetWifiPhy (const Ptr<WifiPhy> phy) override;
-
-  /**
-   * Return whether we are associated with an AP.
-   *
-   * \return true if we are associated with an AP, false otherwise
-   */
-  bool IsAssociated (void) const;
-
-  /**
-   * Return whether all the Qos Queues are empty
-   *
-   * \return true if all Qos queues are empty, false otherwise
-   */
-  bool IsEveryEdcaQueueEmpty () const;
-
-  /**
-   * Return whether the non-Qos (DCF) Queue is empty
-   *
-   * \return true if non-Qos queue is empty, false otherwise
-   */
-  bool IsDcfQueueEmpty () const;
-
-  /**
-   * Return the association ID.
-   *
-   * \return the association ID
-   */
-  uint16_t GetAssociationId (void) const;
-
-  /**
-   * This function is called if FeMan receives a unicast frame not addressed to this STA and is not a broadcast frame. If this is a TWT STA outside of its SP, it will be put to sleep
-   * 
-  */
-  void ReceivedUnicastNotForMe (void);
-  /**
-   * Enable or disable 802.11 PSM.
-   *
-   * \param enable enable or disable 802.11 PSM
-   */
-  void SetPowerSaveMode (bool enable);
-  /**
-   * Return whether 802.11 PSM is enabled.
-   *
-   * \return true if 802.11 PSM is enabled, false otherwise
-   */
-  bool GetPowerSaveMode (void) const;
-  /**
-   * Return whether a Trigger Based TWT agreement is created
-   *
-   * \return true if a Trigger Based TWT agreement is created
-   */
-  bool GetTwtTriggerBased (void) const;
-  /**
-   * Return whether a STA currently has a TWT SP active
-   *
-   * \return true if STA currently has a TWT SP active
-   */
-  bool GetTwtSpNow (void) const;
-  /**
-   * Return the remaining time if STA is in TWT SP. If not in TWT SP, Time::min is returned
-   *
-   * \return remaining time if STA is in TWT SP
-   */
-  Time GetRemainingTimeInTwtSp(void) const;
-  /**
-   * Get expected remaining time till next beacon
-   * 
-   * \return expected remaining time till next beacon
-  */
-  Time GetExpectedRemainingTimeTillNextBeacon(void) const;
-  /**
-   * Placeholder function scheduled at next expected beacon generation time at AP - used to calculate TWT schedules
-   * 
-  */
-  void NextExpectedBeaconGeneration ();
-  /**
-   * If STA is in Power Save, go to sleep if both QoS and non Qos queues are empty
-   * If queues are not empty, this function reschedules itself after SIFS.
-   *
-   * 
-   */
-  void SleepPsIfQueuesEmpty ();
-  /**
-   * * @brief Create a Twt Agreement object
-   * 
-   * @param flowId  Flow ID 0 to 7
-   * @param peerMacAddress  Peer MAC address
-   * @param isRequestingNode  true if requesting node. Set to 0 for AP/responder node
-   * @param isImplicitAgreement   true if implicit agreement. false otherwise
-   * @param flowType  true for unannounced agreement, false for announced agreement
-   * @param isTriggerBasedAgreement   true for trigger based agreement, false for non-trigger based agreement
-   * @param isIndividualAgreement   true for individual agreement, false for broadcast agreement
-   * @param twtChannel  TWT channel - set to 0 for now
-   * @param wakeInterval  TWT wake interval
-   * @param nominalWakeDuration   TWT nominal wake duration
-   * @param nextTwt   TWT next TWT SP start time   */
-  void CreateTwtAgreement (uint8_t flowId, Mac48Address peerMacAddress, bool isRequestingNode, bool isImplicitAgreement, bool flowType, bool isTriggerBasedAgreement, bool isIndividualAgreement, u_int16_t twtChannel, Time wakeInterval, Time nominalWakeDuration, Time nextTwt);
-  /**
-   * Start TWT schedule for given TWT agreement
-   * @param agreement WifiTwtAgreement object
-   * 
-   */
-  void StartTwtSchedule (WifiTwtAgreement agreement);
-  
-  /**
-   * Deprecated------
-   * TODO: Check if STA support TWT first - shyam
-   * TODO: Create function bool isTwtActive() that returns whether TWT is active - shyam
-   * Set up parameters for TWT and activate it. TWT SP will be resumed only if TWT is active (bool isTwtActive())
-   * \param minTwtWakeDuration Twt agreement parameter Minimum TWT Wake duration
-   * \param twtPeriod Time interval between start of two subsequent TWT SPs
-   * \param twtUplinkOutsideSp If true, STA can wake up outside TWT SP for uplink traffic - to be used only for very sparse uplink
-   * \param twtWakeForBeacons If true, STA will wake up for every beacon. If false, STA does not wake up
-   * \param twtAnnounced If true, TWT agreement is trigger based. UL within TWT SP will be sent only if triggered
-   * \param twtTriggerBased If true, TWT agreement is trigger based. UL within TWT SP will be sent only if triggered
-
-   */
-  void SetUpTwt ( Time twtPeriod, Time minTwtWakeDuration, bool twtUplinkOutsideSp = false, bool twtWakeForBeacons = false, bool twtAnnounced=false, bool twtTriggerBased = true);
-  /**
-   * This function wakes up the STA for every TWT SP and reschedules itself after twtPeriod
-   * This function also schedules SetPhyToSleep() after minTwtWakeDuration
-   * This function is called first by SetUpTwt()
-   * 
-   * \param minTwtWakeDuration Twt agreement parameter Minimum TWT Wake duration
-   * \param twtPeriod Time interval between start of two subsequent TWT SPs
-   */
-  void WakeUpForTwtSp ( Time twtPeriod, Time minTwtWakeDuration);
-  /**
-   * Return whether a TWT agreement has been made
-   *
-   * \return true if a TWT agreement has been setup - even if suspended
-   */
-  bool GetTwtAgreement (void) const;
-  /**
-   * Return whether the TWT PS buffer is empty. If TWT is not used, return true
-   *
-   * \return true if the TWT PS buffer is empty. If TWT is not used, return true
-   */
-  bool IsTwtPsQueueEmpty (void) const;
-  /**
-   * Set the PHy to SLEEP
-   *
-   */
-  void SetPhyToSleep ();
-  /**
-   * Resume the PHy from SLEEP
-   *
-   */
-  void ResumePhyFromSleep ();
-  /**
-   * Called exactly at end of TWT SP (after Min Wake DUration) regardless of awake status of STA
-   * If STA is not in SLEEP, already, it is set to SLEEP
-   * 
-   *
-   */
-  void EndOfTwtSpRoutine ();
-  /**
-   * Ends TWT SP wake state for STA when called. Puts PHY to SLEEP
-   *
-   */
-  void SleepWithinTwtSpNow ();
-  /**
-   * 
-   * For PSM if MAC queues are empty, put STA to Sleep.
-   * For Twt, If m_sleepAfterAck is true, put STA to SLEEP and set m_sleepAfterAck to false. Otherwise do nothing. 
-   * This function is called from FeManager and QoS FeManager. It is also called in some DL operations from the STA.
-   * This function is used only if PSM or TWT is used
-   *
-   */
-  void SleepAfterAckIfRequired ();
-  /**
-   * 
-   * Set m_sleepAfterAck to true
-   */
-  void SetSleepAfterAck ();
-  
-
-  /**
-   * 
-   * Temp solution for TB PPDU in TWT
-   * Send one buffered PPDU immediately to AP. Set PM and More data fields appropriately.
-   * If no buffered data, send QoS null frame with PM bit = 1 and more data = 0
-   *
-   */
-  void SendOneTwtUlPpduNow ();
-  /**
-   * 
-   * Add to the STA MAC queue a Management TWT Info frame (unprotected S1G Action frame)
-   *
-   */
-  void EnqueueTwtInfoFrameToApNow (uint8_t m_twtFlowId, uint8_t m_responseRequested, uint8_t m_nextTwtRequest, uint8_t m_nextTwtSubfieldSize, uint8_t m_allTwt, uint64_t m_nextTwt = 0);
-  /**
-   * 
-   * Temp solution for Resuming/Suspending TWT - will be called from FeMan upon receiving ACK for S1G action frame
-   * If nextTwt is 0, suspend TWT if TWT active and suspendable
-   * If nextTwt is >0, Resume TWT
-   *
-   */
-  void ResumeSuspendTwtIfRequired (u_int8_t twtId, uint64_t nextTwt);
-  /**
-   * Returns m_PsWaitingForPolledFrame for PSs STA 
-   * 
-   */
-  bool isStaPsWaitingForPolledFrame ();
     /**
-   * Check if Polled frame was received. If not, send ps poll.
-   */
-  void CheckPsPolledFrameReceived (void);
-  /**
-   * Called after sending normal or Block ack successfully - Used by APSD STAs to enter sleep after receiving EOSP frame
-   */
-  void NormalOrBlockAckTransmitted (void);
+     * Struct to hold information regarding observed AP through
+     * active/passive scanning
+     */
+    struct ApInfo
+    {
+        /**
+         * Information about links to setup
+         */
+        struct SetupLinksInfo
+        {
+            uint8_t localLinkId; ///< local link ID
+            uint8_t apLinkId;    ///< AP link ID
+            Mac48Address bssid;  ///< BSSID
+        };
 
+        Mac48Address m_bssid;  ///< BSSID
+        Mac48Address m_apAddr; ///< AP MAC address
+        double m_snr;          ///< SNR in linear scale
+        MgtFrameType m_frame;  ///< The body of the management frame used to update AP info
+        WifiScanParams::Channel m_channel; ///< The channel the management frame was received on
+        uint8_t m_linkId;                  ///< ID of the link used to communicate with the AP
+        std::list<SetupLinksInfo>
+            m_setupLinks; ///< information about the links to setup between MLDs
+    };
 
-private:
-  /**
-   * The current MAC state of the STA.
-   */
-  enum MacState
-  {
-    ASSOCIATED,
-    WAIT_BEACON,
-    WAIT_PROBE_RESP,
-    WAIT_ASSOC_RESP,
-    UNASSOCIATED,
-    REFUSED
-  };
+    /**
+     * \brief Get the type ID.
+     * \return the object TypeId
+     */
+    static TypeId GetTypeId();
 
-  /**
-   * Return whether AID of this STA was in the PVB of given TIM
-   *
-   * \return true if AID of this STA was in the PVB of given TIM, false otherwise
-   */
-  bool IsAidInTim (Tim tim) const;
-  /**
-   * Enable or disable active probing.
-   *
-   * \param enable enable or disable active probing
-   */
-  void SetActiveProbing (bool enable);
-  /**
-   * Return whether active probing is enabled.
-   *
-   * \return true if active probing is enabled, false otherwise
-   */
-  bool GetActiveProbing (void) const;
+    StaWifiMac();
+    ~StaWifiMac() override;
 
-  /**
-   * Handle a received packet.
-   *
-   * \param mpdu the received MPDU
-   */
-  void Receive (Ptr<WifiMacQueueItem> mpdu) override;
-  /**
-   * Update associated AP's information from beacon. If STA is not associated,
-   * this information will used for the association process.
-   *
-   * \param beacon the beacon header
-   * \param apAddr MAC address of the AP
-   * \param bssid MAC address of BSSID
-   */
-  void UpdateApInfoFromBeacon (MgtBeaconHeader beacon, Mac48Address apAddr, Mac48Address bssid);
-  /**
-   * Update AP's information from probe response. This information is required
-   * for the association process.
-   *
-   * \param probeResp the probe response header
-   * \param apAddr MAC address of the AP
-   * \param bssid MAC address of BSSID
-   */
-  void UpdateApInfoFromProbeResp (MgtProbeResponseHeader probeResp, Mac48Address apAddr, Mac48Address bssid);
-  /**
-   * Update AP's information from association response.
-   *
-   * \param assocResp the association response header
-   * \param apAddr MAC address of the AP
-   */
-  void UpdateApInfoFromAssocResp (MgtAssocResponseHeader assocResp, Mac48Address apAddr);
-  /**
-   * Update list of candidate AP to associate. The list should contain ApInfo sorted from
-   * best to worst SNR, with no duplicate.
-   *
-   * \param newApInfo the new ApInfo to be inserted
-   */
-  void UpdateCandidateApList (ApInfo newApInfo);
+    /**
+     * \param packet the packet to send.
+     * \param to the address to which the packet should be sent.
+     *
+     * The packet should be enqueued in a TX queue, and should be
+     * dequeued as soon as the channel access function determines that
+     * access is granted to this MAC.
+     */
+    void Enqueue(Ptr<Packet> packet, Mac48Address to) override;
+    bool CanForwardPacketsTo(Mac48Address to) const override;
+    Time GetTimeTillNextBeacon() const override;
 
-  /**
-   * Forward a probe request packet to the DCF. The standard is not clear on the correct
-   * queue for management frames if QoS is supported. We always use the DCF.
-   */
-  void SendProbeRequest (void);
-  /**
-   * Forward an association or reassociation request packet to the DCF.
-   * The standard is not clear on the correct queue for management frames if QoS is supported.
-   * We always use the DCF.
-   *
-   * \param isReassoc flag whether it is a reassociation request
-   *
-   */
-  void SendAssociationRequest (bool isReassoc);
-  /**
-   * Send a Null frame with PS bit set enablePS
-   */
-  void SendNullFramePS (bool enablePS);
-  /**
-   * Send a PS-POLL frame to AP
-   */
-  void SendPsPoll (void);
-  /**
-   * Try to ensure that we are associated with an AP by taking an appropriate action
-   * depending on the current association status.
-   */
-  void TryToEnsureAssociated (void);
-  /**
-   * This method is called after the association timeout occurred. We switch the state to
-   * WAIT_ASSOC_RESP and re-send an association request.
-   */
-  void AssocRequestTimeout (void);
-  /**
-   * Start the scanning process which trigger active or passive scanning based on the
-   * active probing flag.
-   */
-  void StartScanning (void);
-  /**
-   * This method is called after wait beacon timeout or wait probe request timeout has
-   * occurred. This will trigger association process from beacons or probe responses
-   * gathered while scanning.
-   */
-  void ScanningTimeout (void);
-  /**
-   * Return whether we are waiting for an association response from an AP.
-   *
-   * \return true if we are waiting for an association response from an AP, false otherwise
-   */
-  bool IsWaitAssocResp (void) const;
-  /**
-   * This method is called after we have not received a beacon from the AP
-   */
-  void MissedBeacons (void);
-  /**
-   * Restarts the beacon timer.
-   *
-   * \param delay the delay before the watchdog fires
-   */
-  void RestartBeaconWatchdog (Time delay);
-  /**
-   * Upon receiving a good beacon, this function is scheduled to wake the STA just for next beacon if STA is in PS. 
-   * This is different from the beacon watchdog timer which takes into account m_maxMissedBeacons
-   */
-  void WakeForNextBeaconPS (void);
-  /**
-   * This function checks if there is already a beacon wake up event scheduled. If no, it schedules one based on beacon period and beaconTimeOutPs, then calls SleepPsIfQueuesEmpty
-   * 
-   */
-  void CheckBeaconTimeOutPS (Time beaconInterval, Time beaconTimeOutPs);
-  /**
-   * Return an instance of SupportedRates that contains all rates that we support
-   * including HT rates.
-   *
-   * \return SupportedRates all rates that we support
-   */
-  SupportedRates GetSupportedRates (void) const;
-  /**
-   * Set the current MAC state.
-   *
-   * \param value the new state
-   */
-  void SetState (MacState value);
+    /**
+     * \param phys the physical layers attached to this MAC.
+     */
+    void SetWifiPhys(const std::vector<Ptr<WifiPhy>>& phys) override;
 
-  /**
-   * Set the EDCA parameters.
-   *
-   * \param ac the access class
-   * \param cwMin the minimum contention window size
-   * \param cwMax the maximum contention window size
-   * \param aifsn the number of slots that make up an AIFS
-   * \param txopLimit the TXOP limit
-   */
-  void SetEdcaParameters (AcIndex ac, uint32_t cwMin, uint32_t cwMax, uint8_t aifsn, Time txopLimit);
-  /**
-   * Set the MU EDCA parameters.
-   *
-   * \param ac the Access Category
-   * \param cwMin the minimum contention window size
-   * \param cwMax the maximum contention window size
-   * \param aifsn the number of slots that make up an AIFS
-   * \param muEdcaTimer the MU EDCA timer
-   */
-  void SetMuEdcaParameters (AcIndex ac, uint16_t cwMin, uint16_t cwMax, uint8_t aifsn, Time muEdcaTimer);
-  /**
-   * Return the Capability information of the current STA.
-   *
-   * \return the Capability information that we support
-   */
-  CapabilityInformation GetCapabilities (void) const;
+    /**
+     * Set the Association Manager.
+     *
+     * \param assocManager the Association Manager
+     */
+    void SetAssocManager(Ptr<WifiAssocManager> assocManager);
 
-  /**
-   * Indicate that PHY capabilities have changed.
-   */
-  void PhyCapabilitiesChanged (void);
+    /**
+     * Set the EMLSR Manager.
+     *
+     * \param emlsrManager the EMLSR Manager
+     */
+    void SetEmlsrManager(Ptr<EmlsrManager> emlsrManager);
 
-  void DoInitialize (void) override;
+    /**
+     * \return the EMLSR Manager
+     */
+    Ptr<EmlsrManager> GetEmlsrManager() const;
 
-  MacState m_state;            ///< MAC state
-  uint16_t m_aid;              ///< Association AID
-  Time m_waitBeaconTimeout;    ///< wait beacon timeout
-  Time m_probeRequestTimeout;  ///< probe request timeout
-  Time m_assocRequestTimeout;  ///< association request timeout
-  Time m_advanceWakeupPS;      ///< Advance wake up to Rx beacon while in PS
-  EventId m_waitBeaconEvent;   ///< wait beacon event
-  EventId m_probeRequestEvent; ///< probe request event
-  EventId m_assocRequestEvent; ///< association request event
-  EventId m_beaconWatchdog;    ///< beacon watchdog
-  EventId m_nextExpectedBeaconGenerationEvent; ///< next expected beacon generation at AP - used for setting TWT schedules using next beacon as the reference
+    /**
+     * Enqueue a probe request packet for transmission on the given link.
+     *
+     * \param linkId the ID of the given link
+     */
+    void SendProbeRequest(uint8_t linkId);
+
+    /**
+     * This method is called after wait beacon timeout or wait probe request timeout has
+     * occurred. This will trigger association process from beacons or probe responses
+     * gathered while scanning.
+     *
+     * \param bestAp the info about the best AP to associate with, if one was found
+     */
+    void ScanningTimeout(const std::optional<ApInfo>& bestAp);
+
+    /**
+     * Return whether we are associated with an AP.
+     *
+     * \return true if we are associated with an AP, false otherwise
+     */
+    bool IsAssociated() const;
+
+    /**
+     * Get the IDs of the setup links (if any).
+     *
+     * \return the IDs of the setup links
+     */
+    std::set<uint8_t> GetSetupLinkIds() const;
+
+    /**
+     * Return the association ID.
+     *
+     * \return the association ID
+     */
+    uint16_t GetAssociationId() const;
+
+    /**
+     * Enable or disable Power Save mode on the given link.
+     *
+     * \param enableLinkIdPair a pair indicating whether to enable or not power save mode on
+     *                         the link with the given ID
+     */
+    void SetPowerSaveMode(const std::pair<bool, uint8_t>& enableLinkIdPair);
+
+    /**
+     * \param linkId the ID of the given link
+     * \return the current Power Management mode of the STA operating on the given link
+     */
+    WifiPowerManagementMode GetPmMode(uint8_t linkId) const;
+
+    /**
+     * Set the Power Management mode of the setup links after association.
+     *
+     * \param linkId the ID of the link used to establish association
+     */
+    void SetPmModeAfterAssociation(uint8_t linkId);
+    /**
+     * Placeholder function scheduled at next expected beacon generation time at AP - used to calculate TWT schedules
+     * 
+     */
+    void NextExpectedBeaconGeneration ();
+    /**
+     * Sleep or wake up PHY for all links 
+     * For sleeping, ongoing frame exchange is completed first
+     * 
+     * \param enable Sleep if set if true, wake if set to false
+     */
+     
+    void SetPhySleepState (bool enable);
+    /**
+     * Notify that the MPDU we sent was successfully received by the receiver
+     * (i.e. we received an Ack from the receiver).
+     *
+     * \param mpdu the MPDU that we successfully sent
+     */
+    void TxOk(Ptr<const WifiMpdu> mpdu);
+
+    void NotifyChannelSwitching(uint8_t linkId) override;
+
+    /**
+     * Notify the MAC that EMLSR mode has changed on the given set of links.
+     *
+     * \param linkIds the IDs of the links that are now EMLSR links (EMLSR mode is disabled
+     *                on other links)
+     */
+    void NotifyEmlsrModeChanged(const std::set<uint8_t>& linkIds);
+
+    /**
+     * \param linkId the ID of the given link
+     * \return whether the EMLSR mode is enabled on the given link
+     */
+    bool IsEmlsrLink(uint8_t linkId) const;
+
+    /**
+     * Notify that the given PHY switched channel to operate on another EMLSR link.
+     *
+     * \param phy the given PHY
+     * \param linkId the ID of the EMLSR link on which the given PHY is operating
+     */
+    void NotifySwitchingEmlsrLink(Ptr<WifiPhy> phy, uint8_t linkId);
+
+    /**
+     * Block transmissions on the given link for the given reason.
+     *
+     * \param linkId the ID of the given link
+     * \param reason the reason for blocking transmissions on the given link
+     */
+    void BlockTxOnLink(uint8_t linkId, WifiQueueBlockedReason reason);
+
+    /**
+     * Unblock transmissions on the given link for the given reason.
+     *
+     * \param linkId the ID of the given link
+     * \param reason the reason for unblocking transmissions on the given link
+     */
+    void UnblockTxOnLink(uint8_t linkId, WifiQueueBlockedReason reason);
+
+    /**
+     * Assign a fixed random variable stream number to the random variables
+     * used by this model.  Return the number of streams (possibly zero) that
+     * have been assigned.
+     *
+     * \param stream first stream index to use
+     *
+     * \return the number of stream indices assigned by this model
+     */
+    int64_t AssignStreams(int64_t stream);
+
+  protected:
+    /**
+     * Structure holding information specific to a single link. Here, the meaning of
+     * "link" is that of the 11be amendment which introduced multi-link devices. For
+     * previous amendments, only one link can be created.
+     */
+    struct StaLinkEntity : public WifiMac::LinkEntity
+    {
+        /// Destructor (a virtual method is needed to make this struct polymorphic)
+        ~StaLinkEntity() override;
+
+        bool sendAssocReq;                 //!< whether this link is used to send the
+                                           //!< Association Request frame
+        std::optional<Mac48Address> bssid; //!< BSSID of the AP to associate with over this link
+        WifiPowerManagementMode pmMode{WIFI_PM_ACTIVE}; /**< the current PM mode, if the STA is
+                                                             associated, or the PM mode to switch
+                                                             to upon association, otherwise */
+        bool emlsrEnabled{false}; //!< whether EMLSR mode is enabled on this link
+    };
+
+    /**
+     * Get a reference to the link associated with the given ID.
+     *
+     * \param linkId the given link ID
+     * \return a reference to the link associated with the given ID
+     */
+    StaLinkEntity& GetLink(uint8_t linkId) const;
+
+    /**
+     * Cast the given LinkEntity object to StaLinkEntity.
+     *
+     * \param link the given LinkEntity object
+     * \return a reference to the object casted to StaLinkEntity
+     */
+    StaLinkEntity& GetStaLink(const std::unique_ptr<WifiMac::LinkEntity>& link) const;
+
+  public:
+    /**
+     * The current MAC state of the STA.
+     */
+    enum MacState
+    {
+        ASSOCIATED,
+        SCANNING,
+        WAIT_ASSOC_RESP,
+        UNASSOCIATED,
+        REFUSED
+    };
+
+  private:
+    /**
+     * Enable or disable active probing.
+     *
+     * \param enable enable or disable active probing
+     */
+    void SetActiveProbing(bool enable);
+    /**
+     * Return whether active probing is enabled.
+     *
+     * \return true if active probing is enabled, false otherwise
+     */
+    bool GetActiveProbing() const;
+
+    /**
+     * Determine whether the supported rates indicated in a given Beacon frame or
+     * Probe Response frame fit with the configured membership selector.
+     *
+     * \param frame the given Beacon or Probe Response frame
+     * \param linkId ID of the link the mgt frame was received over
+     * \return whether the the supported rates indicated in the given management
+     *         frame fit with the configured membership selector
+     */
+    bool CheckSupportedRates(std::variant<MgtBeaconHeader, MgtProbeResponseHeader> frame,
+                             uint8_t linkId);
+
+    void Receive(Ptr<const WifiMpdu> mpdu, uint8_t linkId) override;
+    std::unique_ptr<LinkEntity> CreateLinkEntity() const override;
+    Mac48Address DoGetLocalAddress(const Mac48Address& remoteAddr) const override;
+
+    /**
+     * Process the Beacon frame received on the given link.
+     *
+     * \param mpdu the MPDU containing the Beacon frame
+     * \param linkId the ID of the given link
+     */
+    void ReceiveBeacon(Ptr<const WifiMpdu> mpdu, uint8_t linkId);
+
+    /**
+     * Process the Probe Response frame received on the given link.
+     *
+     * \param mpdu the MPDU containing the Probe Response frame
+     * \param linkId the ID of the given link
+     */
+    void ReceiveProbeResp(Ptr<const WifiMpdu> mpdu, uint8_t linkId);
+
+    /**
+     * Process the (Re)Association Response frame received on the given link.
+     *
+     * \param mpdu the MPDU containing the (Re)Association Response frame
+     * \param linkId the ID of the given link
+     */
+    void ReceiveAssocResp(Ptr<const WifiMpdu> mpdu, uint8_t linkId);
+
+    /**
+     * Update associated AP's information from the given management frame (Beacon,
+     * Probe Response or Association Response). If STA is not associated, this
+     * information will be used for the association process.
+     *
+     * \param frame the body of the given management frame
+     * \param apAddr MAC address of the AP
+     * \param bssid MAC address of BSSID
+     * \param linkId ID of the link the management frame was received over
+     */
+    void UpdateApInfo(const MgtFrameType& frame,
+                      const Mac48Address& apAddr,
+                      const Mac48Address& bssid,
+                      uint8_t linkId);
+
+    /**
+     * Get the (Re)Association Request frame to send on a given link. The returned frame
+     * never includes a Multi-Link Element.
+     *
+     * \param isReassoc whether a Reassociation Request has to be returned
+     * \param linkId the ID of the given link
+     * \return the (Re)Association Request frame
+     */
+    std::variant<MgtAssocRequestHeader, MgtReassocRequestHeader> GetAssociationRequest(
+        bool isReassoc,
+        uint8_t linkId) const;
+
+    /**
+     * Forward an association or reassociation request packet to the DCF.
+     * The standard is not clear on the correct queue for management frames if QoS is supported.
+     * We always use the DCF.
+     *
+     * \param isReassoc flag whether it is a reassociation request
+     *
+     */
+    void SendAssociationRequest(bool isReassoc);
+    /**
+     * Try to ensure that we are associated with an AP by taking an appropriate action
+     * depending on the current association status.
+     */
+    void TryToEnsureAssociated();
+    /**
+     * This method is called after the association timeout occurred. We switch the state to
+     * WAIT_ASSOC_RESP and re-send an association request.
+     */
+    void AssocRequestTimeout();
+    /**
+     * Start the scanning process which trigger active or passive scanning based on the
+     * active probing flag.
+     */
+    void StartScanning();
+    /**
+     * Return whether we are waiting for an association response from an AP.
+     *
+     * \return true if we are waiting for an association response from an AP, false otherwise
+     */
+    bool IsWaitAssocResp() const;
+    /**
+     * This method is called after we have not received a beacon from the AP on any link.
+     */
+    void MissedBeacons();
+    /**
+     * Restarts the beacon timer.
+     *
+     * \param delay the delay before the watchdog fires
+     */
+    void RestartBeaconWatchdog(Time delay);
+    /**
+     * Set the state to unassociated and try to associate again.
+     */
+    void Disassociated();
+    /**
+     * Return an instance of SupportedRates that contains all rates that we support
+     * including HT rates.
+     *
+     * \param linkId the ID of the link for which the request is made
+     * \return SupportedRates all rates that we support
+     */
+    AllSupportedRates GetSupportedRates(uint8_t linkId) const;
+    /**
+     * Return the Multi-Link Element to include in the management frames transmitted
+     * on the given link
+     *
+     * \param isReassoc whether the Multi-Link Element is included in a Reassociation Request
+     * \param linkId the ID of the given link
+     * \return the Multi-Link Element
+     */
+    MultiLinkElement GetMultiLinkElement(bool isReassoc, uint8_t linkId) const;
+
+    /**
+     * \param apNegSupport the negotiation type supported by the AP MLD
+     * \return the TID-to-Link Mapping element(s) to include in Association Request frame.
+     */
+    std::vector<TidToLinkMapping> GetTidToLinkMappingElements(uint8_t apNegSupport);
+
+    /**
+     * Set the current MAC state.
+     *
+     * \param value the new state
+     */
+    void SetState(MacState value);
+
+    /**
+     * EDCA Parameters
+     */
+    struct EdcaParams
+    {
+        AcIndex ac;     //!< the access category
+        uint32_t cwMin; //!< the minimum contention window size
+        uint32_t cwMax; //!< the maximum contention window size
+        uint8_t aifsn;  //!< the number of slots that make up an AIFS
+        Time txopLimit; //!< the TXOP limit
+    };
+
+    /**
+     * Set the EDCA parameters for the given link.
+     *
+     * \param params the EDCA parameters
+     * \param linkId the ID of the given link
+     */
+    void SetEdcaParameters(const EdcaParams& params, uint8_t linkId);
+
+    /**
+     * MU EDCA Parameters
+     */
+    struct MuEdcaParams
+    {
+        AcIndex ac;       //!< the access category
+        uint32_t cwMin;   //!< the minimum contention window size
+        uint32_t cwMax;   //!< the maximum contention window size
+        uint8_t aifsn;    //!< the number of slots that make up an AIFS
+        Time muEdcaTimer; //!< the MU EDCA timer
+    };
+
+    /**
+     * Set the MU EDCA parameters for the given link.
+     *
+     * \param params the MU EDCA parameters
+     * \param linkId the ID of the given link
+     */
+    void SetMuEdcaParameters(const MuEdcaParams& params, uint8_t linkId);
+
+    /**
+     * Return the Capability information for the given link.
+     *
+     * \param linkId the ID of the given link
+     * \return the Capability information that we support
+     */
+    CapabilityInformation GetCapabilities(uint8_t linkId) const;
+
+    /**
+     * Indicate that PHY capabilities have changed.
+     */
+    void PhyCapabilitiesChanged();
+
+    /**
+     * Get the current primary20 channel used on the given link as a
+     * (channel number, PHY band) pair.
+     *
+     * \param linkId the ID of the given link
+     * \return a (channel number, PHY band) pair
+     */
+    WifiScanParams::Channel GetCurrentChannel(uint8_t linkId) const;
+
+    void DoInitialize() override;
+    void DoDispose() override;
+
+    MacState m_state;                       ///< MAC state
+    uint16_t m_aid;                         ///< Association AID
+    Ptr<WifiAssocManager> m_assocManager;   ///< Association Manager
+    Ptr<EmlsrManager> m_emlsrManager;       ///< EMLSR Manager
+    Time m_waitBeaconTimeout;               ///< wait beacon timeout
+    Time m_probeRequestTimeout;             ///< probe request timeout
+    Time m_assocRequestTimeout;             ///< association request timeout
+    EventId m_assocRequestEvent;            ///< association request event
+    uint32_t m_maxMissedBeacons;            ///< maximum missed beacons
+    EventId m_beaconWatchdog;               //!< beacon watchdog
+    Time m_beaconWatchdogEnd{0};            //!< beacon watchdog end
+    EventId m_nextExpectedBeaconGenerationEvent; ///< next expected beacon generation at AP - used for setting TWT schedules using next beacon as the reference
   
-  EventId m_beaconWakeUpPsEvent;    ///< Event for beacon wake up in PSM
-  EventId m_twtSpEndRoutineEvent;    ///< Event for end of twt sp routine - designed only for one TWT agreement per STA
-  
-  EventId m_apsdEospRxTimeoutEvent;    ///< Event for Eosp Frame Rx timeout after sending an UL frame in APSD
+    bool m_activeProbing;                   ///< active probing
+    Ptr<RandomVariableStream> m_probeDelay; ///< RandomVariable used to randomize the time
+                                            ///< of the first Probe Response on each channel
+    Time m_pmModeSwitchTimeout;             ///< PM mode switch timeout
 
-  Time m_beaconWatchdogEnd;    ///< beacon watchdog end
-  uint32_t m_maxMissedBeacons; ///< maximum missed beacons
-  bool m_activeProbing;        ///< active probing
-  bool m_PSM;                 ///< 802.11 PSM
-  bool m_waitingToSwitchToPSM;                 ///< If set to true, STA is waiting for ACK from AP to switch to PSM
-  bool m_waitingToSwitchOutOfPSM;                 ///< If set to true, STA is waiting for ACK from AP to switch to PSM
-  bool m_pendingPsPoll;       ///< When there is both unicast and multicast downlink buffered, set flag to retrieve unicast packets after multicast downlink is complete.
-  bool m_PsNeedToBeAwake;       //< When STA is in PS, this flag is set if an operation requires the STA to be awake till it is complete. Must be set back to false by the same operation
-  bool m_PsWaitingForPolledFrame;       //< When STA is in PS, this flag is set immediately after a PS-POLL frame is queued. As soon as a DL frame is received from AP (regardless of MoreData field), this flag is unset
-  Time m_PsBeaconTimeOut;       //< When STA is in PS, and wakes up for a beacon, it wait for m_PsBeaconTimeOut before going back to sleep
-  
-  bool m_uApsd;             //< Set to true if U-APSD is enabled for BE traffic. If false, basic PSM is assumed for STA sending PM = 1
-  Time m_apsdEospTimeOut;       //< For U-APSD, STA enters sleep after this duration even if EOSP frame is not received after sending a BE QoS data frame
-  bool m_uApsdWaitingToSleepAfterAck;     //< STA has received EOSP frame - waiting to sleep after ACK - notmal or block
-  bool m_uApsdWaitingForEospFrame;     //< STA is waiting for an EOSP QoS frame to enter sleep - do not enter sleep if this flag is true
+    /// store the DL TID-to-Link Mapping included in the Association Request frame
+    WifiTidLinkMapping m_dlTidLinkMappingInAssocReq;
+    /// store the UL TID-to-Link Mapping included in the Association Request frame
+    WifiTidLinkMapping m_ulTidLinkMappingInAssocReq;
 
+    TracedCallback<Mac48Address> m_assocLogger;             ///< association logger
+    TracedCallback<uint8_t, Mac48Address> m_setupCompleted; ///< link setup completed logger
+    TracedCallback<Mac48Address> m_deAssocLogger;           ///< disassociation logger
+    TracedCallback<uint8_t, Mac48Address> m_setupCanceled;  ///< link setup canceled logger
+    TracedCallback<Time> m_beaconArrival;                   ///< beacon arrival logger
+    TracedCallback<ApInfo> m_beaconInfo;                    ///< beacon info logger
 
-  // TWT state maintenance
-  typedef std::pair<uint8_t, ns3::Mac48Address> TwtFlowMacPair; // Flow ID and MAC address pair for TWT state maintenance
-  std::map<TwtFlowMacPair, WifiTwtAgreement> m_twtAgreementMap;
-  std::map<Mac48Address, uint8_t> m_twtAgreementCount;  //!< Number of active TWT agreements with given MAC address - should be <=8
-  
-  
-  
-  // TWT parameters - will be deprecated
-  bool m_twtAgreement;      //< Set to true if a TWT schedule has been set using SetUpTwt(). STA should wake up for the SP only if m_twtActive is set to true
-  bool m_twtActive;           //< Set to true if the existing TWT agreement is active (not suspended). Automatically set to true upon creating a TWT schedule using SetUpTwt()
-  bool m_awakeForTwtSp;           //< Set to true if Sta is currently awake during a TWT SP. Value is invalid in absence of TWT agreement
-  bool m_twtSpNow;           //< Set to true at beginning of every TWT SP. Set to false after min wake duration regardless of awake status or suspension
-  bool m_wakeUpForNextTwt;           //< Set to true if STA should wake up for next TWT - used only for announced TWT - not for TWT susp/res
-  Ptr<WifiMacQueue>  m_twtPsBuffer;          //!< Uplink Buffer pointer for PS stations with TWT
-  // bool m_twtUplinkOutsideSp;      //< Set to true if Sta is allowed to wake up outside TWT SP to send uplink packets - use only for very sparse uplink (less than one packet per TWT period)
-  bool m_twtWakeForBeacons;       //<  Set to true if all beacons should be received. If false, STA will not wake up for beacons
-  bool m_twtTriggerBased;       //<  Set to true it is trigger based TWT- within TWT SP, UL from STA can be sent only if triggered
-  bool m_twtAnnounced;       //<  Set to true if it is Announced TWT
-  bool m_sleepAfterAck;       //< Used only for PSM and TWT. Set to true if STA should enter SLEEP after an ACK or BACK is received. Defaults to false
-  Ptr<UniformRandomVariable> m_uniformRandomVariable;     //< Used for random Ps Poll transmission in PSM
-
-  std::vector<ApInfo> m_candidateAps; ///< list of candidate APs to associate to
-  // Note: std::multiset<ApInfo> might be a candidate container to implement
-  // this sorted list, but we are using a std::vector because we want to sort
-  // based on SNR but find duplicates based on BSSID, and in practice this
-  // candidate vector should not be too large.
-
-  TracedCallback<Mac48Address> m_assocLogger;   ///< association logger
-  TracedCallback<Mac48Address> m_deAssocLogger; ///< disassociation logger
-  TracedCallback<Time>         m_beaconArrival; ///< beacon arrival logger
+    /// TracedCallback signature for link setup completed/canceled events
+    using LinkSetupCallback = void (*)(uint8_t /* link ID */, Mac48Address /* AP address */);
 };
 
-} //namespace ns3
+/**
+ * \brief Stream insertion operator.
+ *
+ * \param os the output stream
+ * \param apInfo the AP information
+ * \returns a reference to the stream
+ */
+std::ostream& operator<<(std::ostream& os, const StaWifiMac::ApInfo& apInfo);
+
+} // namespace ns3
 
 #endif /* STA_WIFI_MAC_H */

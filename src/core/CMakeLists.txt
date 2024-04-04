@@ -1,23 +1,31 @@
-# Set module name
-set(name core)
-
 # Set lib core link dependencies
 set(libraries_to_link)
 
 set(gsl_test_sources)
 if(${GSL_FOUND})
-  include_directories(${GSL_INCLUDE_DIRS})
-  set(libraries_to_link ${libraries_to_link} ${GSL_LIBRARIES})
-  set(gsl_test_sources test/rng-test-suite.cc
-                       test/random-variable-stream-test-suite.cc
+  set(libraries_to_link
+      ${libraries_to_link}
+      ${GSL_LIBRARIES}
+  )
+  set(gsl_test_sources
+      test/rng-test-suite.cc
+      test/random-variable-stream-test-suite.cc
   )
 endif()
 
 # Check for dependencies and add sources accordingly
-check_include_file_cxx("boost/units/quantity.hpp" HAVE_BOOST_UNITS_QUANTITY)
-check_include_file_cxx("boost/units/systems/si.hpp" HAVE_BOOST_UNITS_SI)
-if(${HAVE_BOOST_UNITS_QUANTITY} AND ${HAVE_BOOST_UNITS_SI})
-  add_definitions(-DHAVE_BOOST -DHAVE_BOOST_UNITS)
+check_include_files(
+  "boost/units/quantity.hpp;boost/units/systems/si.hpp"
+  HAVE_BOOST_UNITS
+  LANGUAGE
+  CXX
+)
+
+if(${HAVE_BOOST_UNITS})
+  add_definitions(
+    -DHAVE_BOOST
+    -DHAVE_BOOST_UNITS
+  )
   message(STATUS "Boost Units have been found.")
 else()
   message(
@@ -28,71 +36,87 @@ else()
   )
 endif()
 
-set(rt_sources model/realtime-simulator-impl.cc
-               model/wall-clock-synchronizer.cc
-)
-set(rt_headers model/realtime-simulator-impl.h model/wall-clock-synchronizer.h)
-if(${ENABLE_REALTIME})
-  set(libraries_to_link ${libraries_to_link} ${LIBRT})
-endif()
-
-set(osclock_sources)
-set(osclock_sources model/unix-system-wall-clock-ms.cc)
-
 set(int64x64_sources)
 set(int64x64_headers)
 
-if(${NS3_INT64X64} MATCHES "INT128")
-  set(int64x64_sources model/int64x64-128.cc)
-  set(int64x64_headers model/int64x64-128.h)
-elseif(${NS3_INT64X64} MATCHES "DOUBLE")
-  set(int64x64_headers model/int64x64-double.h)
-elseif(${NS3_INT64X64} MATCHES "CAIRO")
-  set(int64x64_sources model/int64x64-cairo.cc)
-  set(int64x64_headers model/int64x64-cairo.h model/cairo-wideint-private.h)
+if(${NS3_INT64X64}
+   MATCHES
+   "INT128"
+)
+  set(int64x64_sources
+      model/int64x64-128.cc
+  )
+  set(int64x64_headers
+      model/int64x64-128.h
+  )
+elseif(
+  ${NS3_INT64X64}
+  MATCHES
+  "DOUBLE"
+)
+  set(int64x64_headers
+      model/int64x64-double.h
+  )
+elseif(
+  ${NS3_INT64X64}
+  MATCHES
+  "CAIRO"
+)
+  set(int64x64_sources
+      model/int64x64-cairo.cc
+  )
+  set(int64x64_headers
+      model/int64x64-cairo.h
+      model/cairo-wideint-private.h
+  )
 endif()
 
-set(thread_sources)
-set(thread_headers)
-set(thread_test_sources)
-
-if(${NS3_PTHREAD})
-  if(${THREADS_FOUND})
-    set(thread_sources model/unix-fd-reader.cc)
-    set(thread_headers model/unix-fd-reader.h)
-    set(thread_sources
-        ${thread_sources} model/system-thread.cc model/unix-system-mutex.cc
-        model/unix-system-condition.cc
-    )
-
-    set(thread_headers ${thread_headers} model/system-mutex.h
-                       model/system-thread.h model/system-condition.h
-    )
-    set(libraries_to_link ${libraries_to_link} pthread)
-    set(thread_test_sources test/threaded-test-suite.cc)
-  endif()
-endif()
-
+set(example_as_test_sources)
+set(example_as_test_headers)
+set(example_as_test_suite)
 if(${ENABLE_EXAMPLES})
-  set(example_as_test_sources model/example-as-test.cc)
-  set(example_as_test_headers model/example-as-test.h)
-  set(example_as_test_suite test/examples-as-tests-test-suite.cc)
+  set(example_as_test_sources
+      model/example-as-test.cc
+  )
+  set(example_as_test_headers
+      model/example-as-test.h
+  )
+  set(example_as_test_suite
+      test/examples-as-tests-test-suite.cc
+  )
 endif()
 
 # Embedded version support
 set(embedded_version_sources)
 set(embedded_version_headers)
-if(${NS3_ENABLE_BUILD_VERSION})
-  set(embedded_version_sources model/version.cc)
-  set(embedded_version_headers model/version.h)
+if(${ENABLE_BUILD_VERSION})
+  set(embedded_version_sources
+      model/version.cc
+  )
+  set(embedded_version_headers
+      model/version.h
+  )
+endif()
+
+if(WIN32)
+  set(libraries_to_link
+      ${libraries_to_link}
+      wsock32
+      ws2_32
+  )
+  set(fd-reader-sources
+      model/win32-fd-reader.cc
+  )
+else()
+  set(fd-reader-sources
+      model/unix-fd-reader.cc
+  )
 endif()
 
 # Define core lib sources
 set(source_files
-    ${rt_sources}
-    ${osclock_sources}
     ${int64x64_sources}
-    ${thread_sources}
+    ${fd-reader-sources}
     ${example_as_test_sources}
     ${embedded_version_sources}
     helper/csv-reader.cc
@@ -114,19 +138,18 @@ set(source_files
     model/watchdog.cc
     model/synchronizer.cc
     model/make-event.cc
+    model/environment-variable.cc
     model/log.cc
     model/breakpoint.cc
     model/type-id.cc
     model/attribute-construction-list.cc
     model/object-base.cc
-    model/ref-count-base.cc
     model/object.cc
     model/test.cc
     model/random-variable-stream.cc
     model/rng-seed-manager.cc
     model/rng-stream.cc
     model/command-line.cc
-    model/type-name.cc
     model/attribute.cc
     model/boolean.cc
     model/integer.cc
@@ -155,16 +178,18 @@ set(source_files
     model/node-printer.cc
     model/show-progress.cc
     model/time-printer.cc
+    model/system-wall-clock-ms.cc
     model/system-wall-clock-timestamp.cc
     model/length.cc
     model/trickle-timer.cc
+    model/realtime-simulator-impl.cc
+    model/wall-clock-synchronizer.cc
+    model/matrix-array.cc
 )
 
 # Define core lib headers
 set(header_files
-    ${rt_headers}
     ${int64x64_headers}
-    ${thread_headers}
     ${example_as_test_headers}
     ${embedded_version_headers}
     helper/csv-reader.h
@@ -176,7 +201,6 @@ set(header_files
     model/assert.h
     model/attribute-accessor-helper.h
     model/attribute-construction-list.h
-    model/attribute-container-accessor-helper.h
     model/attribute-container.h
     model/attribute-helper.h
     model/attribute.h
@@ -192,12 +216,13 @@ set(header_files
     model/deprecated.h
     model/des-metrics.h
     model/double.h
-    model/empty.h
     model/enum.h
     model/event-id.h
     model/event-impl.h
     model/fatal-error.h
     model/fatal-impl.h
+    model/fd-reader.h
+    model/environment-variable.h
     model/global-value.h
     model/hash-fnv.h
     model/hash-function.h
@@ -230,7 +255,6 @@ set(header_files
     model/priority-queue-scheduler.h
     model/ptr.h
     model/random-variable-stream.h
-    model/ref-count-base.h
     model/rng-seed-manager.h
     model/rng-stream.h
     model/scheduler.h
@@ -258,22 +282,28 @@ set(header_files
     model/type-name.h
     model/type-traits.h
     model/uinteger.h
+    model/uniform-random-bit-generator.h
     model/unused.h
     model/valgrind.h
     model/vector.h
+    model/warnings.h
     model/watchdog.h
+    model/realtime-simulator-impl.h
+    model/wall-clock-synchronizer.h
+    model/val-array.h
+    model/matrix-array.h
 )
 
 set(test_sources
     ${example_as_test_suite}
     ${gsl_test_sources}
-    ${thread_test_sources}
     test/attribute-container-test-suite.cc
     test/attribute-test-suite.cc
     test/build-profile-test-suite.cc
     test/callback-test-suite.cc
     test/command-line-test-suite.cc
     test/config-test-suite.cc
+    test/environment-variable-test-suite.cc
     test/event-garbage-collector-test-suite.cc
     test/global-value-test-suite.cc
     test/hash-test-suite.cc
@@ -287,6 +317,8 @@ set(test_sources
     test/ptr-test-suite.cc
     test/sample-test-suite.cc
     test/simulator-test-suite.cc
+    test/splitstring-test-suite.cc
+    test/threaded-test-suite.cc
     test/time-test-suite.cc
     test/timer-test-suite.cc
     test/traced-callback-test-suite.cc
@@ -295,9 +327,15 @@ set(test_sources
     test/type-id-test-suite.cc
     test/type-traits-test-suite.cc
     test/watchdog-test-suite.cc
+    test/val-array-test-suite.cc
+    test/matrix-array-test-suite.cc
 )
 
 # Build core lib
-build_lib("${name}" "${source_files}" "${header_files}" "${libraries_to_link}"
-          "${test_sources}"
+build_lib(
+  LIBNAME core
+  SOURCE_FILES ${source_files}
+  HEADER_FILES ${header_files}
+  LIBRARIES_TO_LINK ${libraries_to_link}
+  TEST_SOURCES ${test_sources}
 )

@@ -50,8 +50,10 @@ public:
     * \param wakeInterval agreed upon TWT wake interval
     * \param nominalWakeDuration nominal TWT wake duration
     * \param nextTwt next TWT time
+    * \param isSpActiveNow true if the SP is active now, false otherwise
+    * \param isAgreementSuspended true if the agreement is suspended, false otherwise 
     */
-    WifiTwtAgreement(uint8_t flowId, Mac48Address peerMacAddress, bool isRequestingNode, bool isImplicitAgreement, bool flowType, bool isTriggerBasedAgreement, bool isIndividualAgreement, u_int16_t twtChannel, Time wakeInterval, Time nominalWakeDuration, Time nextTwt);    
+    WifiTwtAgreement(uint8_t flowId, Mac48Address peerMacAddress, bool isRequestingNode, bool isImplicitAgreement, bool flowType, bool isTriggerBasedAgreement, bool isIndividualAgreement, u_int16_t twtChannel, Time wakeInterval, Time nominalWakeDuration, Time nextTwt, bool isSpActiveNow, bool isAgreementSuspended);    
     
     virtual ~WifiTwtAgreement ();
 
@@ -143,6 +145,34 @@ public:
     void SetTriggerBasedAgreement(bool value);
 
     /** 
+     * Return whether TWT SP is active now for this agreement
+     *
+     * \return true if TWT SP is active now for this agreement
+     */
+    bool IsSpActiveNow() const;
+
+    /** 
+     * Set whether TWT SP is active now for this agreement
+     *
+     * \param value true if TWT SP is active now for this agreement trigger based
+     */
+    void SetSpActiveNow(bool value);
+
+    /** 
+     * Return whether TWT agreement is suspended
+     *
+     * \return true if TWT agreement is suspended
+     */
+    bool IsAgreementSuspended() const;
+
+    /** 
+     * Set whether TWT agreement is suspended. False by default
+     *
+     * \param value true if TWT agreement is suspended
+     */
+    void SetAgreementSuspended(bool value);
+
+    /** 
      * Return whether this is an individual agreement
      *
      * \return true for individual agreement, false for broadcast agreement
@@ -231,6 +261,8 @@ protected:
     Time m_wakeInterval;   // Agreed upon TWT wake interval
     Time m_nominalWakeDuration; // nominal TWT wake duration
     Time m_nextTwt;       // Next TWT time
+    bool m_isSpActiveNow; // True if the SP is active now, false otherwise
+    bool m_isAgreementSuspended; // True if the agreement is suspended, false otherwise (default)
     EventId m_nextServicePeriodStartEvent; //!< TODO next scheduled TWT SP start event
     EventId m_nextServicePeriodEndEvent; //!< TODO next scheduled TWT SP end event
 

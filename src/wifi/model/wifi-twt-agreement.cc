@@ -26,7 +26,7 @@ namespace ns3 {
 
 NS_LOG_COMPONENT_DEFINE ("WifiTwtAgreement");
 
-WifiTwtAgreement::WifiTwtAgreement(uint8_t flowId, Mac48Address peerMacAddress, bool isRequestingNode, bool isImplicitAgreement, bool flowType, bool isTriggerBasedAgreement, bool isIndividualAgreement, u_int16_t twtChannel, Time wakeInterval, Time nominalWakeDuration, Time nextTwt)
+WifiTwtAgreement::WifiTwtAgreement(uint8_t flowId, Mac48Address peerMacAddress, bool isRequestingNode, bool isImplicitAgreement, bool flowType, bool isTriggerBasedAgreement, bool isIndividualAgreement, u_int16_t twtChannel, Time wakeInterval, Time nominalWakeDuration, Time nextTwt, bool isSpActiveNow = false, bool isAgreementSuspended = false)
     : m_flowId(flowId),
       m_peerMacAddress(peerMacAddress),
       m_isRequestingNode(isRequestingNode),
@@ -38,6 +38,8 @@ WifiTwtAgreement::WifiTwtAgreement(uint8_t flowId, Mac48Address peerMacAddress, 
       m_wakeInterval(wakeInterval),
       m_nominalWakeDuration(nominalWakeDuration),
       m_nextTwt(nextTwt),
+      m_isSpActiveNow (isSpActiveNow),
+      m_isAgreementSuspended (isAgreementSuspended),
       m_nextServicePeriodStartEvent (),
       m_nextServicePeriodEndEvent ()
       {
@@ -211,17 +213,19 @@ WifiTwtAgreement::SetNextTwt(const Time& nextTwt)
 
 std::ostream& operator<<(std::ostream& os, const WifiTwtAgreement& twt)
 {
-    os << "Flow ID: " << static_cast<int>(twt.m_flowId) << "\n";
-    os << "Peer MAC Address: " << twt.m_peerMacAddress << "\n";
-    os << "Is Requesting Node: " << (twt.m_isRequestingNode ? "True" : "False") << "\n";
-    os << "Implicit Agreement: " << (twt.m_isImplicitAgreement ? "True" : "False") << "\n";
-    os << "Flow Type (True for Unannounced Agreement): " << (twt.m_flowType ? "True" : "False") << "\n";
-    os << "Trigger Based Agreement: " << (twt.m_isTriggerBasedAgreement ? "True" : "False") << "\n";
-    os << "Individual Agreement: " << (twt.m_isIndividualAgreement ? "True" : "False") << "\n";
-    os << "TWT Channel: " << twt.m_twtChannel << "\n";
-    os << "Wake Interval: " << twt.m_wakeInterval.GetSeconds() << " seconds\n";
-    os << "Nominal Wake Duration: " << twt.m_nominalWakeDuration.GetSeconds() << " seconds\n";
-    os << "Next TWT: " << twt.m_nextTwt.GetSeconds() << " seconds";
+    os << "\n\tFlow ID: " << static_cast<int>(twt.m_flowId) << "\n";
+    os << "\tPeer MAC Address: " << twt.m_peerMacAddress << "\n";
+    os << "\tIs Requesting Node: " << (twt.m_isRequestingNode ? "True" : "False") << "\n";
+    os << "\tImplicit Agreement: " << (twt.m_isImplicitAgreement ? "True" : "False") << "\n";
+    os << "\tFlow Type (True for Unannounced Agreement): " << (twt.m_flowType ? "True" : "False") << "\n";
+    os << "\tTrigger Based Agreement: " << (twt.m_isTriggerBasedAgreement ? "True" : "False") << "\n";
+    os << "\tIndividual Agreement: " << (twt.m_isIndividualAgreement ? "True" : "False") << "\n";
+    os << "\tTWT Channel: " << twt.m_twtChannel << "\n";
+    os << "\tWake Interval: " << twt.m_wakeInterval.GetSeconds() << " seconds\n";
+    os << "\tNominal Wake Duration: " << twt.m_nominalWakeDuration.GetSeconds() << " seconds\n";
+    os << "\tNext TWT: " << twt.m_nextTwt.GetSeconds() << " seconds\n";
+    os << "\tIs SP Active Now: " << (twt.m_isSpActiveNow ? "True" : "False") << "\n";
+    os << "\tIs Agreement Suspended: " << (twt.m_isAgreementSuspended ? "True" : "False") << "\n";
 
     return os;
 }

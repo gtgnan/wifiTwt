@@ -1,6 +1,6 @@
-set(name lr-wpan)
-
-set(source_files
+build_lib(
+  LIBNAME lr-wpan
+  SOURCE_FILES
     helper/lr-wpan-helper.cc
     model/lr-wpan-csmaca.cc
     model/lr-wpan-error-model.cc
@@ -10,15 +10,15 @@ set(source_files
     model/lr-wpan-mac-header.cc
     model/lr-wpan-mac-pl-headers.cc
     model/lr-wpan-mac-trailer.cc
+    model/lr-wpan-mac-base.cc
     model/lr-wpan-mac.cc
     model/lr-wpan-net-device.cc
     model/lr-wpan-phy.cc
     model/lr-wpan-spectrum-signal-parameters.cc
     model/lr-wpan-spectrum-value-helper.cc
-)
-
-set(header_files
+  HEADER_FILES
     helper/lr-wpan-helper.h
+    model/lr-wpan-constants.h
     model/lr-wpan-csmaca.h
     model/lr-wpan-error-model.h
     model/lr-wpan-fields.h
@@ -27,18 +27,14 @@ set(header_files
     model/lr-wpan-mac-header.h
     model/lr-wpan-mac-pl-headers.h
     model/lr-wpan-mac-trailer.h
+    model/lr-wpan-mac-base.h
     model/lr-wpan-mac.h
     model/lr-wpan-net-device.h
     model/lr-wpan-phy.h
     model/lr-wpan-spectrum-signal-parameters.h
     model/lr-wpan-spectrum-value-helper.h
-)
-
-set(libraries_to_link ${libnetwork} ${libcore} ${libmobility} ${libspectrum}
-                      ${libpropagation}
-)
-
-set(test_sources
+  LIBRARIES_TO_LINK ${libspectrum}
+  TEST_SOURCES
     test/lr-wpan-ack-test.cc
     test/lr-wpan-cca-test.cc
     test/lr-wpan-collision-test.cc
@@ -49,8 +45,5 @@ set(test_sources
     test/lr-wpan-spectrum-value-helper-test.cc
     test/lr-wpan-ifs-test.cc
     test/lr-wpan-slotted-csmaca-test.cc
-)
-
-build_lib("${name}" "${source_files}" "${header_files}" "${libraries_to_link}"
-          "${test_sources}"
+    test/lr-wpan-mac-test.cc
 )

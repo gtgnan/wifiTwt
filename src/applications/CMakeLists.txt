@@ -1,6 +1,6 @@
-set(name applications)
-
-set(source_files
+build_lib(
+  LIBNAME applications
+  SOURCE_FILES
     helper/bulk-send-helper.cc
     helper/on-off-helper.cc
     helper/packet-sink-helper.cc
@@ -28,9 +28,7 @@ set(source_files
     model/video-application.cc
     helper/voip-helper.cc
     helper/video-helper.cc
-)
-
-set(header_files
+  HEADER_FILES
     helper/bulk-send-helper.h
     helper/on-off-helper.h
     helper/packet-sink-helper.h
@@ -58,16 +56,9 @@ set(header_files
     model/video-application.h
     helper/voip-helper.h
     helper/video-helper.h
-)
-
-# link to dependencies
-set(libraries_to_link ${libinternet} ${libstats})
-
-set(test_sources
+  LIBRARIES_TO_LINK ${libinternet}
+  TEST_SOURCES
     test/three-gpp-http-client-server-test.cc
-    test/bulk-send-application-test-suite.cc test/udp-client-server-test.cc
-)
-
-build_lib("${name}" "${source_files}" "${header_files}" "${libraries_to_link}"
-          "${test_sources}"
+    test/bulk-send-application-test-suite.cc
+    test/udp-client-server-test.cc
 )

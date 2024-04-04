@@ -1,6 +1,6 @@
-set(name buildings)
-
-set(source_files
+build_lib(
+  LIBNAME buildings
+  SOURCE_FILES
     helper/building-allocator.cc
     helper/building-container.cc
     helper/building-position-allocator.cc
@@ -15,9 +15,7 @@ set(source_files
     model/oh-buildings-propagation-loss-model.cc
     model/random-walk-2d-outdoor-mobility-model.cc
     model/three-gpp-v2v-channel-condition-model.cc
-)
-
-set(header_files
+  HEADER_FILES
     helper/building-allocator.h
     helper/building-container.h
     helper/building-position-allocator.h
@@ -32,20 +30,14 @@ set(header_files
     model/oh-buildings-propagation-loss-model.h
     model/random-walk-2d-outdoor-mobility-model.h
     model/three-gpp-v2v-channel-condition-model.h
-)
-
-set(libraries_to_link ${libmobility} ${libpropagation} ${libconfig-store})
-
-set(test_sources
-    test/building-position-allocator-test.cc
+  LIBRARIES_TO_LINK ${libpropagation}
+  TEST_SOURCES
+    test/buildings-channel-condition-model-test.cc
     test/buildings-helper-test.cc
     test/buildings-pathloss-test.cc
+    test/buildings-penetration-loss-pathloss-test.cc
+    test/building-position-allocator-test.cc
     test/buildings-shadowing-test.cc
-    test/buildings-channel-condition-model-test.cc
     test/outdoor-random-walk-test.cc
     test/three-gpp-v2v-channel-condition-model-test.cc
-)
-
-build_lib("${name}" "${source_files}" "${header_files}" "${libraries_to_link}"
-          "${test_sources}"
 )

@@ -1,5 +1,3 @@
-set(name internet)
-
 set(source_files
     helper/internet-stack-helper.cc
     helper/internet-trace-helper.cc
@@ -14,6 +12,7 @@ set(source_files
     helper/ipv6-list-routing-helper.cc
     helper/ipv6-routing-helper.cc
     helper/ipv6-static-routing-helper.cc
+    helper/neighbor-cache-helper.cc
     helper/rip-helper.cc
     helper/ripng-helper.cc
     model/arp-cache.cc
@@ -80,7 +79,6 @@ set(source_files
     model/ipv6.cc
     model/loopback-net-device.cc
     model/ndisc-cache.cc
-    model/pending-data.cc
     model/rip-header.cc
     model/rip.cc
     model/ripng-header.cc
@@ -120,7 +118,7 @@ set(source_files
     model/tcp-tx-item.cc
     model/tcp-vegas.cc
     model/tcp-veno.cc
-    model/tcp-westwood.cc
+    model/tcp-westwood-plus.cc
     model/tcp-yeah.cc
     model/udp-header.cc
     model/udp-l4-protocol.cc
@@ -130,10 +128,7 @@ set(source_files
     model/udp-socket.cc
 )
 
-set(private_header_files)
-
 set(header_files
-    ${header_files}
     helper/internet-stack-helper.h
     helper/internet-trace-helper.h
     helper/ipv4-address-helper.h
@@ -147,6 +142,7 @@ set(header_files
     helper/ipv6-list-routing-helper.h
     helper/ipv6-routing-helper.h
     helper/ipv6-static-routing-helper.h
+    helper/neighbor-cache-helper.h
     helper/rip-helper.h
     helper/ripng-helper.h
     model/arp-cache.h
@@ -246,23 +242,26 @@ set(header_files
     model/tcp-tx-item.h
     model/tcp-vegas.h
     model/tcp-veno.h
-    model/tcp-westwood.h
+    model/tcp-westwood-plus.h
     model/tcp-yeah.h
     model/udp-header.h
     model/udp-l4-protocol.h
     model/udp-socket-factory.h
-    model/udp-socket-impl.h
     model/udp-socket.h
     model/windowed-filter.h
 )
 
-set(libraries_to_link ${libnetwork} ${libcore} ${libbridge}
-                      ${libtraffic-control}
-)
+set(private_header_files)
+if(WIN32)
+  set(private_header_files
+      model/win32-internet.h
+  )
+endif()
 
 set(test_sources
     test/global-route-manager-impl-test-suite.cc
     test/icmp-test.cc
+    test/internet-stack-helper-test-suite.cc
     test/ipv4-address-generator-test-suite.cc
     test/ipv4-address-helper-test-suite.cc
     test/ipv4-deduplication-test.cc
@@ -288,6 +287,7 @@ set(test_sources
     test/ipv6-raw-test.cc
     test/ipv6-ripng-test.cc
     test/ipv6-test.cc
+    test/neighbor-cache-test.cc
     test/rtt-test.cc
     test/tcp-advertised-window-test.cc
     test/tcp-bbr-test.cc
@@ -335,6 +335,12 @@ set(test_sources
     test/udp-test.cc
 )
 
-build_lib("${name}" "${source_files}" "${header_files}" "${libraries_to_link}"
-          "${test_sources}"
+build_lib(
+  LIBNAME internet
+  SOURCE_FILES ${source_files}
+  HEADER_FILES ${header_files}
+  PRIVATE_HEADER_FILES ${private_header_files}
+  LIBRARIES_TO_LINK ${libbridge}
+                    ${libtraffic-control}
+  TEST_SOURCES ${test_sources}
 )
